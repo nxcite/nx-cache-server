@@ -24,3 +24,7 @@ pub async fn retrieve_artifact<T: StorageProvider>(
     // TODO: Implement retrieve logic
     Ok((StatusCode::OK, [("content-type", "application/octet-stream")], ""))
 }
+
+pub async fn health_check() -> impl IntoResponse {
+    (StatusCode::OK, "OK")
+}
