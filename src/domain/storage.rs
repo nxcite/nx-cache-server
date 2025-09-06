@@ -5,12 +5,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
-    #[error("Object not found: {key}")]
-    NotFound { key: String },
-    #[error("Object already exists: {key}")]
-    AlreadyExists { key: String },
+    #[error("Object not found")]
+    NotFound,
+    #[error("Object already exists")]
+    AlreadyExists,
     #[error("Storage operation failed")]
-    OperationFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
+    OperationFailed,
 }
 
 #[async_trait]
