@@ -11,7 +11,8 @@ path = "src/bin/aws.rs"
 [dependencies]
 # Core dependencies
 tokio = { version = "1.0", features = ["full"] }
-axum = "0.7"
+tokio-stream = "0.1"
+axum = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 clap = { version = "4.0", features = ["derive", "env"] }
