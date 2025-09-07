@@ -6,7 +6,6 @@ pub mod validation;
 use axum::{
     routing::{get, put},
     Router,
-    middleware as axum_middleware,
 };
 use std::sync::Arc;
 use crate::domain::{config::ServerConfig, storage::StorageProvider};
@@ -19,13 +18,12 @@ pub struct AppState<T: StorageProvider> {
 
 pub fn create_router<T: StorageProvider + Clone>() -> Router<AppState<T>> {
     let protected_routes = Router::new()
-        .route("/v1/cache/:hash", get(handlers::retrieve_artifact::<T>))
-        .route("/v1/cache/:hash", put(handlers::store_artifact::<T>))
-        .layer(axum_middleware::from_fn(middleware::auth_middleware));
+        .route("/v1/cache/{hash}", get(handlers::retrieve_artifact::<T>))  // TODO: Will add auth later
+        .route("/v1/cache/{hash}", put(handlers::store_artifact::<T>));     // TODO: Will add auth later
 
     // Combine public and protected routes
     Router::new()
-        .route("/health", get(handlers::health_check))
+        .route("/health", get(handlers::health_check)) // Public route - no auth required
         .merge(protected_routes)
 }
 

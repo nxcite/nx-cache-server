@@ -1,5 +1,4 @@
 use crate::server::error::ServerError;
-use axum::http::HeaderMap;
 
 pub fn validate_hash(hash: &str) -> Result<(), ServerError> {
     if hash.is_empty() {
