@@ -1,33 +1,33 @@
-use clap::Parser;
 use async_trait::async_trait;
-use aws_sdk_s3::{Client, Config as S3Config, config::Region};
 use aws_sdk_s3::config::timeout::TimeoutConfig;
+use aws_sdk_s3::{config::Region, Client, Config as S3Config};
+use clap::Parser;
 use tokio::io::AsyncRead;
-use tokio_util::io::ReaderStream;
 use tokio_stream::StreamExt;
+use tokio_util::io::ReaderStream;
 
 use crate::domain::{
-    config::{ConfigValidator, ConfigError},
-    storage::{StorageProvider, StorageError}
+    config::{ConfigError, ConfigValidator},
+    storage::{StorageError, StorageProvider},
 };
 
 #[derive(Parser, Debug, Clone)]
 pub struct AwsStorageConfig {
     #[arg(long, env = "AWS_REGION")]
     pub region: String,
-    
+
     #[arg(long, env = "AWS_ACCESS_KEY_ID")]
     pub access_key_id: String,
-    
+
     #[arg(long, env = "AWS_SECRET_ACCESS_KEY")]
     pub secret_access_key: String,
-    
+
     #[arg(long, env = "S3_BUCKET_NAME")]
     pub bucket_name: String,
-    
+
     #[arg(long, env = "S3_ENDPOINT_URL")]
     pub endpoint_url: String,
-    
+
     #[arg(long, env = "S3_TIMEOUT", default_value = "30")]
     pub timeout_seconds: u64,
 }
@@ -47,9 +47,11 @@ impl ConfigValidator for AwsStorageConfig {
             return Err(ConfigError::MissingField("S3 bucket name"));
         }
         if !self.endpoint_url.starts_with("http://") && !self.endpoint_url.starts_with("https://") {
-            return Err(ConfigError::Invalid("S3 endpoint URL must start with http:// or https://"));
+            return Err(ConfigError::Invalid(
+                "S3 endpoint URL must start with http:// or https://",
+            ));
         }
-        
+
         Ok(())
     }
 }
@@ -70,17 +72,17 @@ impl S3Storage {
                 &config.secret_access_key,
                 None,
                 None,
-                "nx-cache-server"
+                "nx-cache-server",
             ))
             .timeout_config(
                 TimeoutConfig::builder()
                     .operation_timeout(std::time::Duration::from_secs(config.timeout_seconds))
-                    .build()
+                    .build(),
             )
             .build();
-            
+
         let client = Client::from_conf(s3_config);
-        
+
         Ok(Self {
             client,
             bucket_name: config.bucket_name.clone(),
@@ -91,7 +93,9 @@ impl S3Storage {
 #[async_trait]
 impl StorageProvider for S3Storage {
     async fn exists(&self, hash: &str) -> Result<bool, StorageError> {
-        match self.client.head_object()
+        match self
+            .client
+            .head_object()
             .bucket(&self.bucket_name)
             .key(hash)
             .send()
@@ -105,12 +109,16 @@ impl StorageProvider for S3Storage {
             }
         }
     }
-    
-    async fn store(&self, hash: &str, mut data: ReaderStream<impl AsyncRead + Send + Unpin>) -> Result<(), StorageError> {
+
+    async fn store(
+        &self,
+        hash: &str,
+        mut data: ReaderStream<impl AsyncRead + Send + Unpin>,
+    ) -> Result<(), StorageError> {
         if self.exists(hash).await? {
             return Err(StorageError::AlreadyExists);
         }
-        
+
         // For simplicity, read all data into memory first
         // TODO: Implement true streaming for better memory efficiency
         let mut buffer = Vec::new();
@@ -120,8 +128,9 @@ impl StorageProvider for S3Storage {
         }
 
         let body = aws_sdk_s3::primitives::ByteStream::from(buffer);
-        
-        self.client.put_object()
+
+        self.client
+            .put_object()
             .bucket(&self.bucket_name)
             .key(hash)
             .body(body)
@@ -131,12 +140,17 @@ impl StorageProvider for S3Storage {
                 tracing::error!("S3 put_object failed: {:?}", e);
                 StorageError::OperationFailed
             })?;
-            
+
         Ok(())
     }
-    
-    async fn retrieve(&self, hash: &str) -> Result<Box<dyn AsyncRead + Send + Unpin>, StorageError> {
-        let result = self.client.get_object()
+
+    async fn retrieve(
+        &self,
+        hash: &str,
+    ) -> Result<Box<dyn AsyncRead + Send + Unpin>, StorageError> {
+        let result = self
+            .client
+            .get_object()
             .bucket(&self.bucket_name)
             .key(hash)
             .send()
@@ -149,7 +163,7 @@ impl StorageProvider for S3Storage {
                     StorageError::OperationFailed
                 }
             })?;
-        
+
         // Direct streaming - no buffering
         Ok(Box::new(result.body.into_async_read()))
     }

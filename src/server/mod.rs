@@ -1,14 +1,14 @@
+pub mod error;
 pub mod handlers;
 pub mod middleware;
-pub mod error;
 pub mod validation;
 
+use crate::domain::{config::ServerConfig, storage::StorageProvider};
 use axum::{
     routing::{get, put},
     Router,
 };
 use std::sync::Arc;
-use crate::domain::{config::ServerConfig, storage::StorageProvider};
 
 #[derive(Clone)]
 pub struct AppState<T: StorageProvider> {
@@ -18,8 +18,8 @@ pub struct AppState<T: StorageProvider> {
 
 pub fn create_router<T: StorageProvider + Clone>() -> Router<AppState<T>> {
     let protected_routes = Router::new()
-        .route("/v1/cache/{hash}", get(handlers::retrieve_artifact::<T>))  // TODO: Will add auth later
-        .route("/v1/cache/{hash}", put(handlers::store_artifact::<T>));     // TODO: Will add auth later
+        .route("/v1/cache/{hash}", get(handlers::retrieve_artifact::<T>)) // TODO: Will add auth later
+        .route("/v1/cache/{hash}", put(handlers::store_artifact::<T>)); // TODO: Will add auth later
 
     // Combine public and protected routes
     Router::new()
@@ -28,19 +28,19 @@ pub fn create_router<T: StorageProvider + Clone>() -> Router<AppState<T>> {
 }
 
 pub async fn run_server<T: StorageProvider + Clone>(
-    storage: T, 
-    config: &ServerConfig
+    storage: T,
+    config: &ServerConfig,
 ) -> Result<(), std::io::Error> {
     let app_state = AppState {
         storage: Arc::new(storage),
         config: Arc::new(config.clone()),
     };
-    
+
     let app = create_router::<T>().with_state(app_state);
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", config.port)).await?;
-    
+
     tracing::info!("Server running on port {}", config.port);
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }
