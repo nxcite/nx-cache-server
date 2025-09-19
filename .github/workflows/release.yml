@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0, v1.0.0-alpha, v1.0.0-beta.1)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes (optional)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate version
+        id: validate
+        uses: ./.github/actions/validate-version
+        with:
+          version: ${{ github.event.inputs.version }}
+
+  build:
+    name: Build Release Binaries
+    needs: validate
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: nx-cache-aws-${{ needs.validate.outputs.version }}-linux-x86_64
+            
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            name: nx-cache-aws-${{ needs.validate.outputs.version }}-macos-x86_64
+            
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            name: nx-cache-aws-${{ needs.validate.outputs.version }}-macos-arm64
+            
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            name: nx-cache-aws-${{ needs.validate.outputs.version }}-windows-x86_64.exe
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update Rust toolchain
+        run: |
+          rustup update stable
+          rustup default stable
+
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build release binary
+        run: |
+          cargo build --release --bin nx-cache-aws --target ${{ matrix.target }}
+
+      - name: Prepare binary for release
+        uses: ./.github/actions/prepare-binary
+        with:
+          target: ${{ matrix.target }}
+          binary-name: nx-cache-aws
+          artifact-name: ${{ matrix.name }}
+
+  create-tag-and-release:
+    name: Create Tag and GitHub Release
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub release
+        uses: ./.github/actions/create-release
+        with:
+          version: ${{ needs.validate.outputs.version }}
+          release-notes: ${{ github.event.inputs.release_notes }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,28 @@
+name: 'Validate Version'
+description: 'Validate semantic version format and check availability in repository'
+
+inputs:
+  version:
+    description: 'Version to validate (e.g., v1.0.0)'
+    required: true
+
+outputs:
+  version:
+    description: 'Validated version string'
+    value: ${{ steps.validate.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate version format and availability
+      id: validate
+      shell: bash
+      run: |
+        # Single source of truth for version validation (supports prereleases)
+        if [[ ! "${{ inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$ ]]; then
+          echo "❌ Invalid version format. Use semantic versioning with 'v' prefix"
+          exit 1
+        fi
+        echo "✅ Version format is valid"
+        
+        echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT

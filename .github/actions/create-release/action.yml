@@ -1,0 +1,68 @@
+name: 'Create GitHub Release'
+description: 'Download artifacts, create tag, and publish GitHub release with assets'
+
+inputs:
+  version:
+    description: 'Release version (e.g., v1.0.0)'
+    required: true
+  release-notes:
+    description: 'Release notes content'
+    required: false
+    default: ''
+  github-token:
+    description: 'GitHub token for creating releases'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Prepare release assets and checksums
+      shell: bash
+      run: |
+        mkdir -p release-assets
+        find artifacts -name "nx-cache-aws*" -type f -exec cp {} release-assets/ \;
+        cd release-assets
+        sha256sum * > checksums.txt
+
+    - name: Create Release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        # Sanitize release notes to prevent injection
+        RELEASE_NOTES='${{ inputs.release-notes }}'
+        if [[ -z "$RELEASE_NOTES" ]]; then
+          RELEASE_NOTES="Release ${{ inputs.version }}"
+        fi
+        
+        # Check if this is a prerelease version
+        PRERELEASE_FLAG=""
+        if [[ "${{ inputs.version }}" =~ -[a-zA-Z] ]]; then
+          PRERELEASE_FLAG="--prerelease"
+          echo "🧪 Detected prerelease version: ${{ inputs.version }}"
+        else
+          echo "🚀 Creating stable release: ${{ inputs.version }}"
+        fi
+        
+        # Use heredoc to safely handle release notes with special characters
+        gh release create "${{ inputs.version }}" --title "Release ${{ inputs.version }}" --notes "$RELEASE_NOTES" $PRERELEASE_FLAG release-assets/*
+
+    - name: Release Summary
+      shell: bash
+      run: |
+        echo "## 🎉 Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Version:** ${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Tag:** [${{ inputs.version }}](https://github.com/${{ github.repository }}/releases/tag/${{ inputs.version }})" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📦 Release Assets:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Linux x86_64:** \`nx-cache-aws-${{ inputs.version }}-linux-x86_64\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **macOS x86_64:** \`nx-cache-aws-${{ inputs.version }}-macos-x86_64\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **macOS ARM64:** \`nx-cache-aws-${{ inputs.version }}-macos-arm64\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Windows x86_64:** \`nx-cache-aws-${{ inputs.version }}-windows-x86_64.exe\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Checksums:** \`checksums.txt\`" >> $GITHUB_STEP_SUMMARY

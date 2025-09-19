@@ -1,0 +1,38 @@
+name: 'Prepare Binary for Release'
+description: 'Copy built binary to artifacts and upload with validation'
+
+inputs:
+  target:
+    description: 'Target architecture (e.g., x86_64-unknown-linux-gnu)'
+    required: true
+  binary-name:
+    description: 'Name of the binary to prepare (e.g., nx-cache-aws)'
+    required: true
+  artifact-name:
+    description: 'Name for the uploaded artifact'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare binary (Unix)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        mkdir -p artifacts
+        cp target/${{ inputs.target }}/release/${{ inputs.binary-name }} artifacts/${{ inputs.artifact-name }}
+        chmod +x artifacts/${{ inputs.artifact-name }}
+
+    - name: Prepare binary (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: |
+        mkdir artifacts
+        copy "target\${{ inputs.target }}\release\${{ inputs.binary-name }}.exe" "artifacts\${{ inputs.artifact-name }}"
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: artifacts/${{ inputs.artifact-name }}
+        if-no-files-found: error
