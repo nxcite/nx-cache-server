@@ -28,7 +28,7 @@ pub struct AwsStorageConfig {
     pub bucket_name: String,
 
     #[arg(long, env = "S3_ENDPOINT_URL")]
-    pub endpoint_url: String,
+    pub endpoint_url: Option<String>,
 
     #[arg(long, env = "S3_TIMEOUT", default_value = "30")]
     pub timeout_seconds: u64,
@@ -48,10 +48,12 @@ impl ConfigValidator for AwsStorageConfig {
         if self.bucket_name.is_empty() {
             return Err(ConfigError::MissingField("S3 bucket name"));
         }
-        if !self.endpoint_url.starts_with("http://") && !self.endpoint_url.starts_with("https://") {
-            return Err(ConfigError::Invalid(
-                "S3 endpoint URL must start with http:// or https://",
-            ));
+        if let Some(endpoint_url) = &self.endpoint_url {
+            if !endpoint_url.starts_with("http://") && !endpoint_url.starts_with("https://") {
+                return Err(ConfigError::Invalid(
+                    "S3 endpoint URL must start with http:// or https://",
+                ));
+            }
         }
 
         Ok(())
@@ -66,10 +68,9 @@ pub struct S3Storage {
 
 impl S3Storage {
     pub async fn new(config: &AwsStorageConfig) -> Result<Self, StorageError> {
-        let s3_config = S3Config::builder()
+        let mut s3_config_builder = S3Config::builder()
             .behavior_version_latest()
             .region(Region::new(config.region.clone()))
-            .endpoint_url(&config.endpoint_url)
             .credentials_provider(aws_sdk_s3::config::Credentials::new(
                 &config.access_key_id,
                 &config.secret_access_key,
@@ -81,8 +82,14 @@ impl S3Storage {
                 TimeoutConfig::builder()
                     .operation_timeout(std::time::Duration::from_secs(config.timeout_seconds))
                     .build(),
-            )
-            .build();
+            );
+
+        // Only set custom endpoint if provided, otherwise use AWS default
+        if let Some(endpoint_url) = &config.endpoint_url {
+            s3_config_builder = s3_config_builder.endpoint_url(endpoint_url);
+        }
+
+        let s3_config = s3_config_builder.build();
 
         let client = Client::from_conf(s3_config);
 
@@ -111,7 +118,7 @@ impl StorageProvider for S3Storage {
                     tracing::error!("S3 head_object failed: {:?}", other);
                     Err(StorageError::OperationFailed)
                 }
-            }
+            },
         }
     }
 
@@ -160,15 +167,11 @@ impl StorageProvider for S3Storage {
             .key(hash)
             .send()
             .await
-            .map_err(|e| {
-                match e.into_service_error() {
-                    GetObjectError::NoSuchKey(_) => {
-                        StorageError::NotFound
-                    }
-                    other => {
-                        tracing::error!("S3 get_object failed: {:?}", other);
-                        StorageError::OperationFailed
-                    }
+            .map_err(|e| match e.into_service_error() {
+                GetObjectError::NoSuchKey(_) => StorageError::NotFound,
+                other => {
+                    tracing::error!("S3 get_object failed: {:?}", other);
+                    StorageError::OperationFailed
                 }
             })?;
 

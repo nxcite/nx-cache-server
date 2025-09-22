@@ -50,7 +50,7 @@ runs:
         fi
         
         # Use heredoc to safely handle release notes with special characters
-        gh release create "${{ inputs.version }}" --title "Release ${{ inputs.version }}" --notes "$RELEASE_NOTES" $PRERELEASE_FLAG release-assets/*
+        gh release create "${{ inputs.version }}" --title "${{ inputs.version }}" --notes "$RELEASE_NOTES" $PRERELEASE_FLAG release-assets/*
 
     - name: Release Summary
       shell: bash
