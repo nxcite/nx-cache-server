@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 use aws_sdk_s3::config::timeout::TimeoutConfig;
+use aws_sdk_s3::operation::get_object::GetObjectError;
+use aws_sdk_s3::operation::head_object::HeadObjectError;
 use aws_sdk_s3::{config::Region, Client, Config as S3Config};
 use clap::Parser;
 use tokio::io::AsyncRead;
@@ -65,6 +67,7 @@ pub struct S3Storage {
 impl S3Storage {
     pub async fn new(config: &AwsStorageConfig) -> Result<Self, StorageError> {
         let s3_config = S3Config::builder()
+            .behavior_version_latest()
             .region(Region::new(config.region.clone()))
             .endpoint_url(&config.endpoint_url)
             .credentials_provider(aws_sdk_s3::config::Credentials::new(
@@ -102,10 +105,12 @@ impl StorageProvider for S3Storage {
             .await
         {
             Ok(_) => Ok(true),
-            Err(e) if e.to_string().contains("NotFound") => Ok(false),
-            Err(e) => {
-                tracing::error!("S3 head_object failed: {:?}", e);
-                Err(StorageError::OperationFailed)
+            Err(e) => match e.into_service_error() {
+                HeadObjectError::NotFound(_) => Ok(false),
+                other => {
+                    tracing::error!("S3 head_object failed: {:?}", other);
+                    Err(StorageError::OperationFailed)
+                }
             }
         }
     }
@@ -156,11 +161,14 @@ impl StorageProvider for S3Storage {
             .send()
             .await
             .map_err(|e| {
-                tracing::error!("S3 get_object failed: {:?}", e);
-                if e.to_string().contains("NoSuchKey") {
-                    StorageError::NotFound
-                } else {
-                    StorageError::OperationFailed
+                match e.into_service_error() {
+                    GetObjectError::NoSuchKey(_) => {
+                        StorageError::NotFound
+                    }
+                    other => {
+                        tracing::error!("S3 get_object failed: {:?}", other);
+                        StorageError::OperationFailed
+                    }
                 }
             })?;
 
