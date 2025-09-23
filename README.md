@@ -1,5 +1,7 @@
 # Nx Custom Remote Cache Server
 
+[![Release](https://github.com/nxcite/nx-cache-server/actions/workflows/release.yml/badge.svg)](https://github.com/nxcite/nx-cache-server/actions/workflows/release.yml)
+
 A lightweight, high-performance Nx cache server that bridges Nx CLI clients with cloud storage providers for caching build artifacts. Built in Rust with a focus on maximum performance and minimal memory usage - less than 4MB during regular operation! 🚀
 
 ## Features
