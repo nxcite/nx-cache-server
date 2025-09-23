@@ -115,3 +115,13 @@ export NODE_TLS_REJECT_UNAUTHORIZED="0"
 Once configured, Nx will automatically use your cache server for storing and retrieving build artifacts.
 
 For more details, see the [Nx documentation](https://nx.dev/recipes/running-tasks/self-hosted-caching#usage-notes).
+
+---
+
+### Stay Updated. Watch this repository to get notified about new releases!
+
+<img width="369" height="387" alt="image" src="https://github.com/user-attachments/assets/97c4ebab-75a1-4f83-bc52-cf4ebbc73bfa" />
+
+<img width="465" height="366" alt="image" src="https://github.com/user-attachments/assets/512af549-0e9a-40ac-95bd-f9eea0da38a7" />
+
+
