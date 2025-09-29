@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nx Custom Remote Cache Server - High-Performance Rust Cache Server for AWS S3</title>
+    <meta name="description" content="A lightweight, high-performance Nx cache server built in Rust. Bridges Nx CLI clients with AWS S3 storage for caching build artifacts with less than 4MB memory usage.">
+    <meta name="keywords" content="Nx cache server, Rust cache server, AWS S3 cache, build artifacts, Nx remote cache, self-hosted cache, high performance cache">
+    <meta name="author" content="nxcite">
+    <meta name="robots" content="index, follow">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://nxcite.github.io/nx-cache-server/">
+    <meta property="og:title" content="Nx Custom Remote Cache Server - High-Performance Rust Cache Server">
+    <meta property="og:description" content="A lightweight, high-performance Nx cache server built in Rust. Bridges Nx CLI clients with AWS S3 storage with less than 4MB memory usage.">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary">
+    <meta property="twitter:url" content="https://nxcite.github.io/nx-cache-server/">
+    <meta property="twitter:title" content="Nx Custom Remote Cache Server - High-Performance Rust Cache Server">
+    <meta property="twitter:description" content="A lightweight, high-performance Nx cache server built in Rust. Bridges Nx CLI clients with AWS S3 storage with less than 4MB memory usage.">
+
+    <link rel="canonical" href="https://nxcite.github.io/nx-cache-server/">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'custom-blue': '#143055',
+                        'custom-light-blue': '#96BCDA'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": "Nx Custom Remote Cache Server",
+            "description": "A lightweight, high-performance Nx cache server built in Rust that bridges Nx CLI clients with AWS S3 storage for caching build artifacts with less than 4MB memory usage.",
+            "url": "https://nxcite.github.io/nx-cache-server/",
+            "downloadUrl": "https://github.com/nxcite/nx-cache-server/releases",
+            "author": {
+                "@type": "Organization",
+                "name": "nxcite"
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-900">
+    <!-- Header -->
+    <header class="bg-custom-blue text-white">
+        <div class="container mx-auto px-6 py-12">
+            <div>
+                <h1 class="text-4xl md:text-6xl font-bold mb-4">Nx Custom Remote Cache Server</h1>
+                <p class="text-xl md:text-2xl text-custom-light-blue mb-6">
+                    A lightweight, high-performance Nx cache server built in Rust
+                </p>
+                <div class="mb-6 space-x-2">
+                    <img src="https://github.com/nxcite/nx-cache-server/actions/workflows/release.yml/badge.svg" alt="GitHub Actions Release Status Badge for Nx Cache Server" class="inline-block">
+                    <a href="https://github.com/nxcite/nx-cache-server" class="inline-block" aria-label="Star Nx Cache Server on GitHub">
+                        <img src="https://img.shields.io/badge/⭐-Star%20us%20on%20GitHub-blue?style=flat" alt="Star Nx Cache Server on GitHub" class="inline-block">
+                    </a>
+                </div>
+                <div class="space-x-4">
+                    <a href="https://github.com/nxcite/nx-cache-server/releases"
+                       class="bg-white text-custom-blue px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition duration-300 inline-block">
+                        Download Latest Release
+                    </a>
+                    <a href="https://github.com/nxcite/nx-cache-server"
+                       class="border border-white text-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-custom-blue transition duration-300 inline-block">
+                        View on GitHub
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Description Section -->
+    <section class="py-12 bg-white border-b">
+        <div class="container mx-auto px-6">
+            <div class="max-w-4xl mx-auto text-center">
+                <p class="text-lg md:text-xl text-gray-700 leading-relaxed">
+                    A lightweight, high-performance Nx cache server that bridges Nx CLI clients with cloud storage providers for caching build artifacts. Built in Rust with a focus on maximum performance and minimal memory usage - less than 4MB during regular operation! 🚀
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="py-16">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4">Features</h2>
+                <p class="text-lg text-gray-600">Built with performance and simplicity in mind</p>
+            </div>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition duration-300">
+                    <div class="w-12 h-12 bg-custom-blue text-white rounded-lg flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">AWS S3 Integration</h3>
+                    <p class="text-gray-600">Direct streaming integration with AWS S3 and S3-compatible services</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition duration-300">
+                    <div class="w-12 h-12 bg-custom-blue text-white rounded-lg flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">Memory Efficient</h3>
+                    <p class="text-gray-600">Direct streaming with <strong>less than 4MB RAM</strong> usage during typical operation</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition duration-300">
+                    <div class="w-12 h-12 bg-custom-blue text-white rounded-lg flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.58-5.84a14.98 14.98 0 012.58 5.84M9.75 7.124a6 6 0 00-7.37 5.84v4.8m4.8-2.581a14.926 14.926 0 015.84-2.58M3.38 12a14.926 14.926 0 002.58-5.84"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">High Performance</h3>
+                    <p class="text-gray-600">Built with Rust and Axum for maximum throughput</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition duration-300">
+                    <div class="w-12 h-12 bg-custom-blue text-white rounded-lg flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">Zero Dependencies</h3>
+                    <p class="text-gray-600">Self-contained single executable with no external dependencies required</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition duration-300">
+                    <div class="w-12 h-12 bg-custom-blue text-white rounded-lg flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">Security First</h3>
+                    <p class="text-gray-600">Bearer token authentication with constant-time comparison</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition duration-300">
+                    <div class="w-12 h-12 bg-custom-blue text-white rounded-lg flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">Self-Hosted & Private</h3>
+                    <p class="text-gray-600">Full control over your data with zero telemetry</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Start Section -->
+    <section class="bg-white py-16">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4">Quick Start</h2>
+                <p class="text-lg text-gray-600">Get up and running in minutes</p>
+            </div>
+            <div class="max-w-4xl mx-auto">
+                <!-- Prerequisites -->
+                <div class="bg-blue-50 border-l-4 border-custom-blue p-6 mb-8">
+                    <h3 class="text-lg font-semibold text-custom-blue mb-2">Prerequisites</h3>
+                    <p class="text-gray-700">Access to AWS S3 (or S3-compatible service like MinIO)</p>
+                </div>
+
+                <div class="space-y-8">
+                    <!-- Step 1 -->
+                    <div class="flex items-start space-x-4">
+                        <div class="bg-custom-blue text-white w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold">1</div>
+                        <div class="flex-1 overflow-auto">
+                            <h3 class="text-xl font-semibold mb-2">Download the binary</h3>
+                            <p class="text-gray-600 mb-4">Go to the <a href="https://github.com/nxcite/nx-cache-server/releases" class="text-blue-600 hover:underline">Releases page</a> and download the binary for your operating system.</p>
+                            <p class="text-gray-600 mb-4">Alternatively, use command line tools:</p>
+                            <div class="space-y-3 overflow-auto">
+                                <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto overflow-auto">
+                                    <p class="text-sm text-gray-600 mb-2"># Using curl</p>
+                                    <code class="text-sm text-gray-800 block whitespace-pre">curl -L https://github.com/nxcite/nx-cache-server/releases/download/&lt;VERSION&gt;/nx-cache-aws-&lt;VERSION&gt;-&lt;PLATFORM&gt; -o nx-cache-aws</code>
+                                </div>
+                                <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto overflow-auto">
+                                    <p class="text-sm text-gray-600 mb-2"># Using wget</p>
+                                    <code class="text-sm text-gray-800 block whitespace-pre">wget https://github.com/nxcite/nx-cache-server/releases/download/&lt;VERSION&gt;/nx-cache-aws-&lt;VERSION&gt;-&lt;PLATFORM&gt; -O nx-cache-aws</code>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-600 mt-3">Replace: <code>&lt;VERSION&gt;</code> with the version tag (e.g., v1.0.0), <code>&lt;PLATFORM&gt;</code> with your platform (e.g., linux-x86_64, macos-arm64, macos-x86_64, windows-x86_64.exe)</p>
+                        </div>
+                    </div>
+                    <!-- Step 2 -->
+                    <div class="flex items-start space-x-4">
+                        <div class="bg-custom-blue text-white w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold">2</div>
+                        <div class="flex-1">
+                            <h3 class="text-xl font-semibold mb-2">Make executable (Linux/macOS only)</h3>
+                            <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
+                                <code class="text-sm text-gray-800 block whitespace-pre">chmod +x nx-cache-aws</code>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Step 3 -->
+                    <div class="flex items-start space-x-4">
+                        <div class="bg-custom-blue text-white w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold">3</div>
+                        <div class="flex-1 overflow-auto">
+                            <h3 class="text-xl font-semibold mb-2">Configure the server</h3>
+                            <p class="text-gray-600 mb-4">The server supports three configuration methods that can be used independently or combined:</p>
+
+                            <!-- Option A -->
+                            <div class="mb-6 overflow-auto">
+                                <h4 class="text-lg font-semibold mb-3">Option A: Environment Variables (Recommended)</h4>
+                                <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
+                                    <code class="text-sm text-gray-800 block whitespace-pre">export AWS_REGION="your-aws-region"
+export AWS_ACCESS_KEY_ID="your-aws-access-key-id"
+export AWS_SECRET_ACCESS_KEY="your-aws-secret-access-key"
+export S3_BUCKET_NAME="your-s3-bucket-name"
+export SERVICE_ACCESS_TOKEN="your-bearer-token"
+
+# Optional:
+export S3_ENDPOINT_URL="your-s3-endpoint-url"   # for S3-compatible services like MinIO
+export S3_TIMEOUT="30"                          # S3 operation timeout in seconds (default: 30)
+export PORT="3000"                              # server port (default: 3000)</code>
+                                </div>
+                            </div>
+
+                            <!-- Option B -->
+                            <div class="mb-6 overflow-auto">
+                                <h4 class="text-lg font-semibold mb-3">Option B: Command Line Arguments</h4>
+                                <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
+                                    <code class="text-sm text-gray-800 block whitespace-pre">./nx-cache-aws \
+  --region "your-aws-region" \
+  --access-key-id "your-aws-access-key-id" \
+  --secret-access-key "your-aws-secret-access-key" \
+  --bucket-name "your-s3-bucket-name" \
+  --endpoint-url "your-s3-endpoint-url" \
+  --service-access-token "your-bearer-token" \
+  --timeout-seconds 30 \
+  --port 3000</code>
+                                </div>
+                            </div>
+
+                            <!-- Option C -->
+                            <div class="mb-6 overflow-auto">
+                                <h4 class="text-lg font-semibold mb-3">Option C: Mixed Configuration</h4>
+                                <p class="text-gray-600 mb-3">You can also combine both methods. Command line arguments will override environment variables:</p>
+                                <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
+                                    <code class="text-sm text-gray-800 block whitespace-pre"># Set common config via environment
+export AWS_REGION="us-west-2"
+export AWS_ACCESS_KEY_ID="your-aws-access-key-id"
+export AWS_SECRET_ACCESS_KEY="your-aws-secret-access-key"
+export S3_BUCKET_NAME="my-cache-bucket"
+export SERVICE_ACCESS_TOKEN="my-secure-token"
+
+# Override other values via CLI
+./nx-cache-aws --port 8080</code>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Step 4 -->
+                    <div class="flex items-start space-x-4">
+                        <div class="bg-custom-blue text-white w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold">4</div>
+                        <div class="flex-1">
+                            <h3 class="text-xl font-semibold mb-2">Run the server</h3>
+                            <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
+                                <code class="text-sm text-gray-800 block whitespace-pre">./nx-cache-aws</code>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Step 5 -->
+                    <div class="flex items-start space-x-4">
+                        <div class="bg-custom-blue text-white w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold">5</div>
+                        <div class="flex-1">
+                            <h3 class="text-xl font-semibold mb-2">Verify the service (optional)</h3>
+                            <p class="text-gray-600 mb-3">Check that the server is up and running:</p>
+                            <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
+                                <code class="text-sm text-gray-800 block whitespace-pre">curl http://localhost:3000/health</code>
+                            </div>
+                            <p class="text-gray-600 mt-3">You should receive an "OK" response.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Client Configuration Section -->
+    <section class="py-16 bg-gray-100">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4">Client Configuration</h2>
+                <p class="text-lg text-gray-600">Configure your Nx workspace to use the cache server</p>
+            </div>
+            <div class="max-w-3xl mx-auto">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-xl font-semibold mb-4">Environment Variables</h3>
+                    <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
+                        <code class="text-sm text-gray-800 block whitespace-pre"># Point Nx to your cache server
+export NX_SELF_HOSTED_REMOTE_CACHE_SERVER="http://localhost:3000"
+
+# Authentication token (must match SERVICE_ACCESS_TOKEN from server config)
+export NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN="your-bearer-token"
+
+# Optional: Disable TLS certificate validation (e.g. for development/testing environment)
+export NODE_TLS_REJECT_UNAUTHORIZED="0"</code>
+                    </div>
+                    <p class="text-gray-600 mt-4">Once configured, Nx will automatically use your cache server for storing and retrieving build artifacts.</p>
+                    <p class="text-gray-600 mt-2">For more details, see the <a href="https://nx.dev/recipes/running-tasks/self-hosted-caching#usage-notes" class="text-blue-600 hover:underline">Nx documentation</a>.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stay Updated Section -->
+    <section class="py-16 bg-custom-blue text-white">
+        <div class="container mx-auto px-6 text-center">
+            <h2 class="text-3xl md:text-4xl font-bold mb-4">Stay Updated</h2>
+            <p class="text-xl text-custom-light-blue mb-6">Watch this repository to get notified about new releases!</p>
+            <a href="https://github.com/nxcite/nx-cache-server"
+               class="bg-white text-custom-blue px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition duration-300 inline-block">
+                Watch on GitHub
+            </a>
+        </div>
+    </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-8">
+        <div class="container mx-auto px-6 text-center">
+            <p class="text-gray-400">
+                Built with ❤️ in Rust |
+                <a href="https://github.com/nxcite/nx-cache-server" class="text-custom-light-blue hover:underline">GitHub</a> |
+                <a href="https://github.com/nxcite/nx-cache-server/releases" class="text-custom-light-blue hover:underline">Releases</a>
+            </p>
+        </div>
+    </footer>
+</body>
+</html>
