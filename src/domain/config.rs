@@ -10,7 +10,7 @@ pub enum ConfigError {
 }
 
 pub trait ConfigValidator {
-    fn validate(&self) -> Result<(), ConfigError>;
+    fn validate(&self) -> impl std::future::Future<Output = Result<(), ConfigError>> + Send;
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -29,7 +29,7 @@ pub struct ServerConfig {
 }
 
 impl ConfigValidator for ServerConfig {
-    fn validate(&self) -> Result<(), ConfigError> {
+    async fn validate(&self) -> Result<(), ConfigError> {
         if self.service_access_token.is_empty() {
             return Err(ConfigError::MissingField("service access token"));
         }

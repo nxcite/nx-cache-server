@@ -1,5 +1,10 @@
 use async_trait::async_trait;
+use aws_config::default_provider::credentials::DefaultCredentialsChain;
+use aws_config::meta::region::future::ProvideRegion as ProvideRegionFuture;
+use aws_config::meta::region::{ProvideRegion, RegionProviderChain};
+use aws_credential_types::provider::future::ProvideCredentials as ProvideCredentialsFuture;
 use aws_sdk_s3::config::timeout::TimeoutConfig;
+use aws_sdk_s3::config::{Credentials, ProvideCredentials};
 use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::operation::head_object::HeadObjectError;
 use aws_sdk_s3::{config::Region, Client, Config as S3Config};
@@ -16,13 +21,16 @@ use crate::domain::{
 #[derive(Parser, Debug, Clone)]
 pub struct AwsStorageConfig {
     #[arg(long, env = "AWS_REGION")]
-    pub region: String,
+    pub region: Option<String>,
 
     #[arg(long, env = "AWS_ACCESS_KEY_ID")]
-    pub access_key_id: String,
+    pub access_key_id: Option<String>,
 
     #[arg(long, env = "AWS_SECRET_ACCESS_KEY")]
-    pub secret_access_key: String,
+    pub secret_access_key: Option<String>,
+
+    #[arg(long, env = "AWS_SESSION_TOKEN")]
+    pub session_token: Option<String>,
 
     #[arg(long, env = "S3_BUCKET_NAME")]
     pub bucket_name: String,
@@ -34,17 +42,42 @@ pub struct AwsStorageConfig {
     pub timeout_seconds: u64,
 }
 
+impl ProvideRegion for AwsStorageConfig {
+    fn region(&self) -> ProvideRegionFuture<'_> {
+        let region = self.region.clone();
+        ProvideRegionFuture::new(async {
+            RegionProviderChain::first_try(region.map(Region::new))
+                .or_default_provider()
+                .region()
+                .await
+        })
+    }
+}
+
+impl ProvideCredentials for AwsStorageConfig {
+    fn provide_credentials<'a>(&'a self) -> ProvideCredentialsFuture<'a>
+    where
+        Self: 'a,
+    {
+        if self.access_key_id.is_some() && self.secret_access_key.is_some() {
+            return ProvideCredentialsFuture::ready(Ok(Credentials::new(
+                self.access_key_id.clone().unwrap(),
+                self.secret_access_key.clone().unwrap().clone(),
+                self.session_token.clone(),
+                None,
+                "nx-cache-server",
+            )));
+        }
+
+        let builder = DefaultCredentialsChain::builder().region(self.clone()).build();
+        return ProvideCredentialsFuture::new(async {
+            builder.await.provide_credentials().await
+        })
+    }
+}
+
 impl ConfigValidator for AwsStorageConfig {
-    fn validate(&self) -> Result<(), ConfigError> {
-        if self.region.is_empty() {
-            return Err(ConfigError::MissingField("AWS region"));
-        }
-        if self.access_key_id.is_empty() {
-            return Err(ConfigError::MissingField("AWS access key ID"));
-        }
-        if self.secret_access_key.is_empty() {
-            return Err(ConfigError::MissingField("AWS secret access key"));
-        }
+    async fn validate(&self) -> Result<(), ConfigError> {
         if self.bucket_name.is_empty() {
             return Err(ConfigError::MissingField("S3 bucket name"));
         }
@@ -54,6 +87,15 @@ impl ConfigValidator for AwsStorageConfig {
                     "S3 endpoint URL must start with http:// or https://",
                 ));
             }
+        }
+        if self.secret_access_key.is_some() && self.access_key_id.is_none() {
+            return Err(ConfigError::MissingField("AWS_ACCESS_KEY_ID"));
+        }
+        if self.access_key_id.is_some() && self.secret_access_key.is_none() {
+            return Err(ConfigError::MissingField("AWS_SECRET_ACCESS_KEY"));
+        }
+        if self.region().await.is_none() {
+            return Err(ConfigError::MissingField("AWS_REGION"));
         }
 
         Ok(())
@@ -70,14 +112,8 @@ impl S3Storage {
     pub async fn new(config: &AwsStorageConfig) -> Result<Self, StorageError> {
         let mut s3_config_builder = S3Config::builder()
             .behavior_version_latest()
-            .region(Region::new(config.region.clone()))
-            .credentials_provider(aws_sdk_s3::config::Credentials::new(
-                &config.access_key_id,
-                &config.secret_access_key,
-                None,
-                None,
-                "nx-cache-server",
-            ))
+            .region(config.region().await)
+            .credentials_provider(config.clone())
             .timeout_config(
                 TimeoutConfig::builder()
                     .operation_timeout(std::time::Duration::from_secs(config.timeout_seconds))
