@@ -59,20 +59,25 @@ impl ProvideCredentials for AwsStorageConfig {
     where
         Self: 'a,
     {
-        if self.access_key_id.is_some() && self.secret_access_key.is_some() {
-            return ProvideCredentialsFuture::ready(Ok(Credentials::new(
-                self.access_key_id.clone().unwrap(),
-                self.secret_access_key.clone().unwrap().clone(),
-                self.session_token.clone(),
-                None,
-                "nx-cache-server",
-            )));
+        match (self.access_key_id.as_ref(), self.secret_access_key.as_ref()) {
+            (Some(access_key_id), Some(secret_access_key)) => {
+                ProvideCredentialsFuture::ready(Ok(Credentials::new(
+                    access_key_id,
+                    secret_access_key,
+                    self.session_token.clone(),
+                    None,
+                    "nx-cache-server",
+                )))
+            }
+            _ => ProvideCredentialsFuture::new(async {
+                DefaultCredentialsChain::builder()
+                    .region(self.clone())
+                    .build()
+                    .await
+                    .provide_credentials()
+                    .await
+            }),
         }
-
-        let builder = DefaultCredentialsChain::builder().region(self.clone()).build();
-        return ProvideCredentialsFuture::new(async {
-            builder.await.provide_credentials().await
-        })
     }
 }
 
