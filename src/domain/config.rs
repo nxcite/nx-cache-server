@@ -10,7 +10,7 @@ pub enum ConfigError {
 }
 
 pub trait ConfigValidator {
-    fn validate(&self) -> impl std::future::Future<Output = Result<(), ConfigError>> + Send;
+    fn validate(&self) -> impl std::future::Future<Output = Result<(), ConfigError>>;
 }
 
 #[derive(Parser, Debug, Clone)]
