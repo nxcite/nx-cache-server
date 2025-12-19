@@ -22,8 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = AwsCli::parse();
 
     // Two validation calls
-    cli.server.validate()?;
-    cli.storage.validate()?;
+    cli.server.validate().await?;
+    cli.storage.validate().await?;
 
     // Clean interfaces - each component gets exactly what it needs
     let storage = S3Storage::new(&cli.storage).await?;

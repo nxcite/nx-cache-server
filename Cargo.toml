@@ -24,6 +24,7 @@ thiserror = "1.0"
 subtle = "2.5"
 aws-config = { version = "1.0", default-features = false }
 aws-sdk-s3 = { version = "1.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-credential-types = "1.2.10"
 
 [profile.release]
 strip = true         # Remove all symbols
