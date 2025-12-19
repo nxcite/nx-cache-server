@@ -94,8 +94,8 @@ impl ConfigValidator for AwsStorageConfig {
             }
         }
         match (self.access_key_id.as_ref(), self.secret_access_key.as_ref()) {
-            (Some(..), None) => return Err(ConfigError::MissingField("AWS_ACCESS_KEY_ID")),
-            (None, Some(..)) => return Err(ConfigError::MissingField("AWS_SECRET_ACCESS_KEY")),
+            (Some(..), None) => return Err(ConfigError::MissingField("AWS_SECRET_ACCESS_KEY")),
+            (None, Some(..)) => return Err(ConfigError::MissingField("AWS_ACCESS_KEY_ID")),
             _ => {}
         }
         if self.region().await.is_none() {
