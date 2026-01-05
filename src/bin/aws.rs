@@ -21,13 +21,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cli = AwsCli::parse();
 
-    // Two validation calls
-    cli.server.validate().await?;
-    cli.storage.validate().await?;
+    // Validate server configuration
+    if let Err(e) = cli.server.validate().await {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
 
-    // Clean interfaces - each component gets exactly what it needs
-    let storage = S3Storage::new(&cli.storage).await?;
-    run_server(storage, &cli.server).await?;
+    // Validate storage configuration
+    if let Err(e) = cli.storage.validate().await {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
+
+    // Initialize storage
+    let storage = match S3Storage::new(&cli.storage).await {
+        Ok(storage) => storage,
+        Err(e) => {
+            eprintln!();
+            eprintln!("Failed to initialize S3 storage: {}", e);
+            eprintln!();
+            eprintln!("Please check your AWS credentials and configuration.");
+            std::process::exit(1);
+        }
+    };
+
+    // Run server
+    tracing::info!("Server starting on port {}", cli.server.port);
+    if let Err(e) = run_server(storage, &cli.server).await {
+        eprintln!();
+        eprintln!("Server error: {}", e);
+        std::process::exit(1);
+    }
 
     Ok(())
 }

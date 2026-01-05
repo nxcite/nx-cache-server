@@ -20,25 +20,54 @@ use crate::domain::{
 
 #[derive(Parser, Debug, Clone)]
 pub struct AwsStorageConfig {
-    #[arg(long, env = "AWS_REGION")]
+    #[arg(
+        long,
+        env = "AWS_REGION",
+        help = "AWS region (e.g., us-west-2). Auto-discovered from environment, AWS config, or EC2/ECS metadata if not provided"
+    )]
     pub region: Option<String>,
 
-    #[arg(long, env = "AWS_ACCESS_KEY_ID")]
+    #[arg(
+        long,
+        env = "AWS_ACCESS_KEY_ID",
+        help = "AWS access key ID. Optional - uses AWS credential provider chain (environment, config file, IAM roles) if not provided"
+    )]
     pub access_key_id: Option<String>,
 
-    #[arg(long, env = "AWS_SECRET_ACCESS_KEY")]
+    #[arg(
+        long,
+        env = "AWS_SECRET_ACCESS_KEY",
+        help = "AWS secret access key. Required if --access-key-id is provided"
+    )]
     pub secret_access_key: Option<String>,
 
-    #[arg(long, env = "AWS_SESSION_TOKEN")]
+    #[arg(
+        long,
+        env = "AWS_SESSION_TOKEN",
+        help = "AWS session token for temporary security credentials. Optional"
+    )]
     pub session_token: Option<String>,
 
-    #[arg(long, env = "S3_BUCKET_NAME")]
+    #[arg(
+        long,
+        env = "S3_BUCKET_NAME",
+        help = "S3 bucket name for cache storage"
+    )]
     pub bucket_name: String,
 
-    #[arg(long, env = "S3_ENDPOINT_URL")]
+    #[arg(
+        long,
+        env = "S3_ENDPOINT_URL",
+        help = "Custom S3 endpoint URL (e.g., http://localhost:9000 for MinIO). Optional - uses AWS S3 if not provided"
+    )]
     pub endpoint_url: Option<String>,
 
-    #[arg(long, env = "S3_TIMEOUT", default_value = "30")]
+    #[arg(
+        long,
+        env = "S3_TIMEOUT",
+        default_value = "30",
+        help = "S3 operation timeout in seconds"
+    )]
     pub timeout_seconds: u64,
 }
 
@@ -84,7 +113,7 @@ impl ProvideCredentials for AwsStorageConfig {
 impl ConfigValidator for AwsStorageConfig {
     async fn validate(&self) -> Result<(), ConfigError> {
         if self.bucket_name.is_empty() {
-            return Err(ConfigError::MissingField("S3 bucket name"));
+            return Err(ConfigError::MissingField("S3_BUCKET_NAME"));
         }
         if let Some(endpoint_url) = &self.endpoint_url {
             if !endpoint_url.starts_with("http://") && !endpoint_url.starts_with("https://") {
