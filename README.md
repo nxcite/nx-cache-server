@@ -34,7 +34,7 @@ curl -L https://github.com/nxcite/nx-cache-server/releases/download/<VERSION>/nx
 wget https://github.com/nxcite/nx-cache-server/releases/download/<VERSION>/nx-cache-aws-<VERSION>-<PLATFORM> -O nx-cache-aws
 
 # Replace:
-#  <VERSION> with the version tag (e.g., v1.0.0)
+#  <VERSION> with the version tag (e.g., v1.1.0)
 #  <PLATFORM> with your platform (e.g., linux-x86_64, macos-arm64, macos-x86_64, windows-x86_64.exe).
 ```
 
@@ -45,20 +45,26 @@ chmod +x nx-cache-aws
 
 #### Step 3: Configure the server
 
-The server supports two configuration methods that can be used independently or combined:
+The server supports configuration via environment variables, command-line arguments, or both.
 
 ##### Option A: Environment Variables (Recommended)
 ```bash
-export AWS_REGION="your-aws-region"
-export AWS_ACCESS_KEY_ID="your-aws-access-key-id"
-export AWS_SECRET_ACCESS_KEY="your-aws-secret-access-key"
+# Required
 export S3_BUCKET_NAME="your-s3-bucket-name"
 export SERVICE_ACCESS_TOKEN="your-bearer-token"
 
-# Optional:
-export S3_ENDPOINT_URL="your-s3-endpoint-url"   # for S3-compatible services like MinIO
+# AWS Credentials (optional - auto-discovered from IAM roles, config files, SSO if not provided)
+export AWS_ACCESS_KEY_ID="your-aws-access-key-id"
+export AWS_SECRET_ACCESS_KEY="your-aws-secret-access-key"
+export AWS_SESSION_TOKEN="your-session-token"  # If you are using temporary credentials
+
+# AWS Region (optional - auto-discovered from AWS config, EC2/ECS metadata if not provided)
+export AWS_REGION="us-west-2"
+
+# Optional
+export S3_ENDPOINT_URL="your-s3-endpoint-url"   # For S3-compatible services like MinIO
 export S3_TIMEOUT="30"                          # S3 operation timeout in seconds (default: 30)
-export PORT="3000"                              # server port (default: 3000)
+export PORT="3000"                              # Server port (default: 3000)
 ```
 
 ##### Option B: Command Line Arguments
@@ -68,6 +74,7 @@ export PORT="3000"                              # server port (default: 3000)
   --access-key-id "your-aws-access-key-id" \
   --secret-access-key "your-aws-secret-access-key" \
   --bucket-name "your-s3-bucket-name" \
+  --session-token "your-session-token" \
   --endpoint-url "your-s3-endpoint-url" \
   --service-access-token "your-bearer-token" \
   --timeout-seconds 30 \
@@ -79,14 +86,14 @@ You can also combine both methods. Command line arguments will override environm
 ```bash
 # Set common config via environment
 export AWS_REGION="us-west-2"
-export AWS_ACCESS_KEY_ID="your-aws-access-key-id"
-export AWS_SECRET_ACCESS_KEY="your-aws-secret-access-key"
 export S3_BUCKET_NAME="my-cache-bucket"
 export SERVICE_ACCESS_TOKEN="my-secure-token"
 
-# Override other values via CLI
+# Specify other values via CLI
 ./nx-cache-aws --port 8080
 ```
+
+> **Note:** AWS credentials and region are optional when running on AWS infrastructure (EC2, ECS, Lambda) or when AWS config files are present. The server will auto-discover them from your environment.
 
 #### Step 4: Run the server
 ```bash
