@@ -196,7 +196,7 @@
                                     <code class="text-sm text-gray-800 block whitespace-pre">wget https://github.com/nxcite/nx-cache-server/releases/download/&lt;VERSION&gt;/nx-cache-aws-&lt;VERSION&gt;-&lt;PLATFORM&gt; -O nx-cache-aws</code>
                                 </div>
                             </div>
-                            <p class="text-sm text-gray-600 mt-3">Replace: <code>&lt;VERSION&gt;</code> with the version tag (e.g., v1.0.0), <code>&lt;PLATFORM&gt;</code> with your platform (e.g., linux-x86_64, macos-arm64, macos-x86_64, windows-x86_64.exe)</p>
+                            <p class="text-sm text-gray-600 mt-3">Replace: <code>&lt;VERSION&gt;</code> with the version tag (e.g., v1.1.0), <code>&lt;PLATFORM&gt;</code> with your platform (e.g., linux-x86_64, macos-arm64, macos-x86_64, windows-x86_64.exe)</p>
                         </div>
                     </div>
                     <!-- Step 2 -->
@@ -220,16 +220,22 @@
                             <div class="mb-6 overflow-auto">
                                 <h4 class="text-lg font-semibold mb-3">Option A: Environment Variables (Recommended)</h4>
                                 <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
-                                    <code class="text-sm text-gray-800 block whitespace-pre">export AWS_REGION="your-aws-region"
-export AWS_ACCESS_KEY_ID="your-aws-access-key-id"
-export AWS_SECRET_ACCESS_KEY="your-aws-secret-access-key"
+                                    <code class="text-sm text-gray-800 block whitespace-pre"># Required
 export S3_BUCKET_NAME="your-s3-bucket-name"
 export SERVICE_ACCESS_TOKEN="your-bearer-token"
 
-# Optional:
-export S3_ENDPOINT_URL="your-s3-endpoint-url"   # for S3-compatible services like MinIO
+# AWS Credentials (optional - auto-discovered from IAM roles, config files, SSO if not provided)
+export AWS_ACCESS_KEY_ID="your-aws-access-key-id"
+export AWS_SECRET_ACCESS_KEY="your-aws-secret-access-key"
+export AWS_SESSION_TOKEN="your-session-token"  # If you are using temporary credentials
+
+# AWS Region (optional - auto-discovered from AWS config, EC2/ECS metadata if not provided)
+export AWS_REGION="us-west-2"
+
+# Optional
+export S3_ENDPOINT_URL="your-s3-endpoint-url"   # For S3-compatible services like MinIO
 export S3_TIMEOUT="30"                          # S3 operation timeout in seconds (default: 30)
-export PORT="3000"                              # server port (default: 3000)</code>
+export PORT="3000"                              # Server port (default: 3000)</code>
                                 </div>
                             </div>
 
@@ -238,12 +244,13 @@ export PORT="3000"                              # server port (default: 3000)</c
                                 <h4 class="text-lg font-semibold mb-3">Option B: Command Line Arguments</h4>
                                 <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
                                     <code class="text-sm text-gray-800 block whitespace-pre">./nx-cache-aws \
+  --bucket-name "your-s3-bucket-name" \
+  --service-access-token "your-bearer-token" \
   --region "your-aws-region" \
   --access-key-id "your-aws-access-key-id" \
   --secret-access-key "your-aws-secret-access-key" \
-  --bucket-name "your-s3-bucket-name" \
+  --session-token "your-session-token" \
   --endpoint-url "your-s3-endpoint-url" \
-  --service-access-token "your-bearer-token" \
   --timeout-seconds 30 \
   --port 3000</code>
                                 </div>
@@ -256,13 +263,14 @@ export PORT="3000"                              # server port (default: 3000)</c
                                 <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
                                     <code class="text-sm text-gray-800 block whitespace-pre"># Set common config via environment
 export AWS_REGION="us-west-2"
-export AWS_ACCESS_KEY_ID="your-aws-access-key-id"
-export AWS_SECRET_ACCESS_KEY="your-aws-secret-access-key"
 export S3_BUCKET_NAME="my-cache-bucket"
 export SERVICE_ACCESS_TOKEN="my-secure-token"
 
-# Override other values via CLI
+# Specify other values via CLI
 ./nx-cache-aws --port 8080</code>
+                                </div>
+                                <div class="bg-blue-50 border-l-4 border-custom-blue p-4 mt-4">
+                                    <p class="text-sm text-gray-700"><strong>Note:</strong> AWS credentials and region are optional when running on AWS infrastructure (EC2, ECS, Lambda) or when AWS config files are present. The server will auto-discover them from your environment.</p>
                                 </div>
                             </div>
                         </div>
