@@ -143,9 +143,18 @@ pub struct S3Storage {
 
 impl S3Storage {
     pub async fn new(config: &AwsStorageConfig) -> Result<Self, StorageError> {
+        // Resolve region once - validation already ensured it exists
+        let region = config
+            .region()
+            .await
+            .ok_or_else(|| {
+                tracing::error!("AWS_REGION must be set");
+                StorageError::OperationFailed
+            })?;
+
         let mut s3_config_builder = S3Config::builder()
             .behavior_version_latest()
-            .region(config.region().await)
+            .region(region)
             .credentials_provider(config.clone())
             .timeout_config(
                 TimeoutConfig::builder()
@@ -153,9 +162,11 @@ impl S3Storage {
                     .build(),
             );
 
-        // Only set custom endpoint if provided, otherwise use AWS default
+        // Configure for custom S3-compatible endpoints (MinIO, Hetzner, etc.)
         if let Some(endpoint_url) = &config.endpoint_url {
-            s3_config_builder = s3_config_builder.endpoint_url(endpoint_url);
+            s3_config_builder = s3_config_builder
+                .endpoint_url(endpoint_url)
+                .force_path_style(true); // Required for most S3-compatible services
         }
 
         let s3_config = s3_config_builder.build();
