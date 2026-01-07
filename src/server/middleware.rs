@@ -7,6 +7,7 @@ use axum::{
     response::Response,
 };
 use subtle::ConstantTimeEq;
+use tracing;
 
 pub async fn auth_middleware<T>(
     State(state): State<AppState<T>>,
@@ -28,14 +29,24 @@ where
         None => return Err(StatusCode::UNAUTHORIZED),
     };
 
-    // Constant-time comparison for security
-    if !bool::from(
-        token
-            .as_bytes()
-            .ct_eq(state.config.service_access_token.as_bytes()),
-    ) {
-        return Err(StatusCode::UNAUTHORIZED);
+    // Check token against all configured tokens using constant-time comparison
+    let mut matched_name: Option<&str> = None;
+
+    for token_value in state.token_registry.tokens() {
+        if bool::from(token.as_bytes().ct_eq(token_value.as_bytes())) {
+            matched_name = state.token_registry.find_token_name(token_value);
+            break;
+        }
     }
 
-    Ok(next.run(request).await)
+    match matched_name {
+        Some(name) => {
+            tracing::info!("Authenticated request from: {}", name);
+            Ok(next.run(request).await)
+        }
+        None => {
+            tracing::warn!("Authentication failed: invalid token");
+            Err(StatusCode::UNAUTHORIZED)
+        }
+    }
 }
