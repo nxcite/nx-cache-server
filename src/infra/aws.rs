@@ -144,13 +144,10 @@ pub struct S3Storage {
 impl S3Storage {
     pub async fn new(config: &AwsStorageConfig) -> Result<Self, StorageError> {
         // Resolve region once - validation already ensured it exists
-        let region = config
-            .region()
-            .await
-            .ok_or_else(|| {
-                tracing::error!("AWS_REGION must be set");
-                StorageError::OperationFailed
-            })?;
+        let region = config.region().await.ok_or_else(|| {
+            tracing::error!("AWS_REGION must be set");
+            StorageError::OperationFailed
+        })?;
 
         let mut s3_config_builder = S3Config::builder()
             .behavior_version_latest()
