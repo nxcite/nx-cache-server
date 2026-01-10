@@ -51,7 +51,9 @@ The server supports configuration via environment variables, command-line argume
 ```bash
 # Required
 export S3_BUCKET_NAME="your-s3-bucket-name"
-export SERVICE_ACCESS_TOKEN="your-bearer-token"
+
+# Access token(s) - supports single or multiple, plain or named
+export SERVICE_ACCESS_TOKEN="frontend=token1,backend=token2,ci=token3"
 
 # AWS Credentials (optional - auto-discovered from IAM roles, config files, SSO if not provided)
 export AWS_ACCESS_KEY_ID="your-aws-access-key-id"
@@ -76,9 +78,12 @@ export PORT="3000"                              # Server port (default: 3000)
   --bucket-name "your-s3-bucket-name" \
   --session-token "your-session-token" \
   --endpoint-url "your-s3-endpoint-url" \
-  --service-access-token "your-bearer-token" \
+  --service-access-token "frontend=token1,backend=token2" \
   --timeout-seconds 30 \
   --port 3000
+
+# Single token also works:
+# --service-access-token "my-single-token"
 ```
 
 ##### Option C: Mixed Configuration
@@ -87,7 +92,10 @@ You can also combine both methods. Command line arguments will override environm
 # Set common config via environment
 export AWS_REGION="us-west-2"
 export S3_BUCKET_NAME="my-cache-bucket"
-export SERVICE_ACCESS_TOKEN="my-secure-token"
+
+# Works for single or multiple tokens
+export SERVICE_ACCESS_TOKEN="my-token"  # Single token
+# OR: export SERVICE_ACCESS_TOKEN="frontend=token1,backend=token2"  # Multiple tokens
 
 # Specify other values via CLI
 ./nx-cache-aws --port 8080
@@ -114,14 +122,35 @@ To configure your Nx workspace to use this cache server, set the following envir
 # Point Nx to your cache server
 export NX_SELF_HOSTED_REMOTE_CACHE_SERVER="http://localhost:3000"
 
-# Authentication token (must match SERVICE_ACCESS_TOKEN from server config)
-export NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN="your-bearer-token"
+# Authentication token (must match one of the tokens from SERVICE_ACCESS_TOKENS on the server)
+export NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN="token1"
 
 # Optional: Disable TLS certificate validation (e.g. for development/testing environment)
 export NODE_TLS_REJECT_UNAUTHORIZED="0"
 ```
 
 Once configured, Nx will automatically use your cache server for storing and retrieving build artifacts.
+
+#### Token Configuration
+
+**Use `SERVICE_ACCESS_TOKEN` for single OR multiple tokens:**
+
+```bash
+# Single token (plain)
+export SERVICE_ACCESS_TOKEN="my-token-123"
+
+# Single token (named for better logging)
+export SERVICE_ACCESS_TOKEN="production=my-token-123"
+
+# Multiple plain tokens (comma-separated)
+export SERVICE_ACCESS_TOKEN="token1,token2,token3"
+
+# Multiple named tokens (recommended for teams)
+export SERVICE_ACCESS_TOKEN="frontend=abc123,backend=def456,ci=xyz789"
+
+# Mixed format (named + plain)
+export SERVICE_ACCESS_TOKEN="frontend=abc123,def456,ci=xyz789"
+```
 
 For more details, see the [Nx documentation](https://nx.dev/recipes/running-tasks/self-hosted-caching#usage-notes).
 
