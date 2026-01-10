@@ -222,7 +222,9 @@
                                 <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
                                     <code class="text-sm text-gray-800 block whitespace-pre"># Required
 export S3_BUCKET_NAME="your-s3-bucket-name"
-export SERVICE_ACCESS_TOKEN="your-bearer-token"
+
+# Access token(s) - supports single or multiple, plain or named
+export SERVICE_ACCESS_TOKEN="frontend=token1,backend=token2,ci=token3"
 
 # AWS Credentials (optional - auto-discovered from IAM roles, config files, SSO if not provided)
 export AWS_ACCESS_KEY_ID="your-aws-access-key-id"
@@ -244,15 +246,18 @@ export PORT="3000"                              # Server port (default: 3000)</c
                                 <h4 class="text-lg font-semibold mb-3">Option B: Command Line Arguments</h4>
                                 <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
                                     <code class="text-sm text-gray-800 block whitespace-pre">./nx-cache-aws \
-  --bucket-name "your-s3-bucket-name" \
-  --service-access-token "your-bearer-token" \
   --region "your-aws-region" \
   --access-key-id "your-aws-access-key-id" \
   --secret-access-key "your-aws-secret-access-key" \
+  --bucket-name "your-s3-bucket-name" \
   --session-token "your-session-token" \
   --endpoint-url "your-s3-endpoint-url" \
+  --service-access-token "frontend=token1,backend=token2" \
   --timeout-seconds 30 \
-  --port 3000</code>
+  --port 3000
+
+# Single token also works:
+# --service-access-token "my-single-token"</code>
                                 </div>
                             </div>
 
@@ -264,7 +269,10 @@ export PORT="3000"                              # Server port (default: 3000)</c
                                     <code class="text-sm text-gray-800 block whitespace-pre"># Set common config via environment
 export AWS_REGION="us-west-2"
 export S3_BUCKET_NAME="my-cache-bucket"
-export SERVICE_ACCESS_TOKEN="my-secure-token"
+
+# Works for single or multiple tokens
+export SERVICE_ACCESS_TOKEN="my-token"  # Single token
+# OR: export SERVICE_ACCESS_TOKEN="frontend=token1,backend=token2"  # Multiple tokens
 
 # Specify other values via CLI
 ./nx-cache-aws --port 8080</code>
@@ -316,14 +324,33 @@ export SERVICE_ACCESS_TOKEN="my-secure-token"
                         <code class="text-sm text-gray-800 block whitespace-pre"># Point Nx to your cache server
 export NX_SELF_HOSTED_REMOTE_CACHE_SERVER="http://localhost:3000"
 
-# Authentication token (must match SERVICE_ACCESS_TOKEN from server config)
-export NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN="your-bearer-token"
+# Authentication token (must match one of the tokens from SERVICE_ACCESS_TOKEN on the server)
+export NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN="token1"
 
 # Optional: Disable TLS certificate validation (e.g. for development/testing environment)
 export NODE_TLS_REJECT_UNAUTHORIZED="0"</code>
                     </div>
                     <p class="text-gray-600 mt-4">Once configured, Nx will automatically use your cache server for storing and retrieving build artifacts.</p>
-                    <p class="text-gray-600 mt-2">For more details, see the <a href="https://nx.dev/recipes/running-tasks/self-hosted-caching#usage-notes" class="text-blue-600 hover:underline">Nx documentation</a>.</p>
+
+                    <h3 class="text-xl font-semibold mb-4 mt-8">Token Configuration</h3>
+                    <p class="text-gray-600 mb-3"><strong>Use <code>SERVICE_ACCESS_TOKEN</code> for single OR multiple tokens:</strong></p>
+                    <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
+                        <code class="text-sm text-gray-800 block whitespace-pre"># Single token (plain)
+export SERVICE_ACCESS_TOKEN="my-token-123"
+
+# Single token (named for better logging)
+export SERVICE_ACCESS_TOKEN="production=my-token-123"
+
+# Multiple plain tokens (comma-separated)
+export SERVICE_ACCESS_TOKEN="token1,token2,token3"
+
+# Multiple named tokens (recommended for teams)
+export SERVICE_ACCESS_TOKEN="frontend=abc123,backend=def456,ci=xyz789"
+
+# Mixed format (named + plain)
+export SERVICE_ACCESS_TOKEN="frontend=abc123,def456,ci=xyz789"</code>
+                    </div>
+                    <p class="text-gray-600 mt-4">For more details, see the <a href="https://nx.dev/recipes/running-tasks/self-hosted-caching#usage-notes" class="text-blue-600 hover:underline">Nx documentation</a>.</p>
                 </div>
             </div>
         </div>
