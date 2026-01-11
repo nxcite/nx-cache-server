@@ -34,7 +34,7 @@ curl -L https://github.com/nxcite/nx-cache-server/releases/download/<VERSION>/nx
 wget https://github.com/nxcite/nx-cache-server/releases/download/<VERSION>/nx-cache-aws-<VERSION>-<PLATFORM> -O nx-cache-aws
 
 # Replace:
-#  <VERSION> with the version tag (e.g., v1.1.0)
+#  <VERSION> with the version tag (e.g., v1.2.0)
 #  <PLATFORM> with your platform (e.g., linux-x86_64, macos-arm64, macos-x86_64, windows-x86_64.exe).
 ```
 
