@@ -1,5 +1,15 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use std::fmt;
+
+/// Log verbosity level, selectable via `--log-level` or the `LOG_LEVEL` env var.
+#[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
 
 #[derive(Debug)]
 pub enum ConfigError {
@@ -121,8 +131,15 @@ pub struct ServerConfig {
     )]
     pub service_access_token: String,
 
-    #[arg(long, env = "DEBUG", help = "Enable debug logging")]
+    #[arg(long, env = "DEBUG", help = "Enable debug logging (shorthand for --log-level debug)")]
     pub debug: bool,
+
+    #[arg(
+        long,
+        env = "LOG_LEVEL",
+        help = "Log verbosity level. Defaults to info, or debug when --debug is set"
+    )]
+    pub log_level: Option<LogLevel>,
 }
 
 impl ConfigValidator for ServerConfig {

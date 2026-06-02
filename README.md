@@ -65,6 +65,7 @@ export AWS_REGION="us-west-2"
 export S3_ENDPOINT_URL="your-s3-endpoint-url"   # For S3-compatible services like MinIO
 export S3_TIMEOUT="30"                          # S3 operation timeout in seconds (default: 30)
 export PORT="3000"                              # Server port (default: 3000)
+export LOG_LEVEL="info"                         # Log verbosity: trace, debug, info, warn, error (default: info)
 ```
 
 ##### Option B: Command Line Arguments
@@ -78,7 +79,8 @@ export PORT="3000"                              # Server port (default: 3000)
   --endpoint-url "your-s3-endpoint-url" \
   --service-access-token "your-bearer-token" \
   --timeout-seconds 30 \
-  --port 3000
+  --port 3000 \
+  --log-level debug
 ```
 
 ##### Option C: Mixed Configuration

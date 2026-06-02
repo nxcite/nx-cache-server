@@ -1,7 +1,8 @@
 use clap::Parser;
-use nx_cache_server::domain::config::{ConfigValidator, ServerConfig};
+use nx_cache_server::domain::config::{ConfigValidator, LogLevel, ServerConfig};
 use nx_cache_server::infra::aws::{AwsStorageConfig, S3Storage};
 use nx_cache_server::server::run_server;
+use tracing::Level;
 
 #[derive(Parser)]
 #[command(name = "nx-cache-aws")]
@@ -16,10 +17,24 @@ struct AwsCli {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging
-    tracing_subscriber::fmt::init();
-
     let cli = AwsCli::parse();
+
+    // Resolve log verbosity: --log-level wins, then --debug, otherwise info.
+    let log_level = match cli.server.log_level {
+        Some(level) => level,
+        None if cli.server.debug => LogLevel::Debug,
+        None => LogLevel::Info,
+    };
+    let max_level = match log_level {
+        LogLevel::Trace => Level::TRACE,
+        LogLevel::Debug => Level::DEBUG,
+        LogLevel::Info => Level::INFO,
+        LogLevel::Warn => Level::WARN,
+        LogLevel::Error => Level::ERROR,
+    };
+
+    // Initialize logging
+    tracing_subscriber::fmt().with_max_level(max_level).init();
 
     // Validate server configuration
     if let Err(e) = cli.server.validate().await {
