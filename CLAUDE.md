@@ -68,9 +68,18 @@ Auth failures return `401`. Nx clients connect via `NX_SELF_HOSTED_REMOTE_CACHE_
 - **`RUST_LOG` is inert.** It does nothing. Do not suggest it.
 - Verbosity is controlled by `--log-level <trace|debug|info|warn|error>` / `LOG_LEVEL`, or the `--debug` shorthand (= `debug`). Resolution order lives in `bin/aws.rs`: `--log-level` wins, else `--debug`, else `info`. Implemented via `tracing_subscriber::fmt().with_max_level(...)`.
 
-### The cache hit/miss visibility gap
+### Cache hit/miss logging
 
-The handlers (`server/handlers.rs`) and the S3 layer emit **no per-request logs on the success path** — only `tracing::error!` on failures, plus the two startup `info!` lines. So running at `--log-level=debug` and seeing "no cache hits" is expected: **a successful GET/PUT logs nothing today.** If asked to "see cache hits", the fix is to add `tracing::info!`/`debug!` lines in `retrieve_artifact` / `store_artifact` (hit, miss, store, conflict), not to change the log level. There is no request-logging middleware (e.g. `tower-http::trace`) wired in.
+`server/handlers.rs` logs one human-readable line per cache operation at `info!`:
+
+- `cache HIT: <hash>` — `GET` found the artifact
+- `cache MISS: <hash>` — `GET` returned 404
+- `cache STORE: <hash> (24.5 KB)` — `PUT` stored a new artifact
+- `cache STORE skipped (already cached): <hash>` — `PUT` hit the 409 immutability path
+
+Because these are `info!` events and the subscriber uses `with_max_level`, they show at `info`/`debug`/`trace` and are hidden at `warn`/`error`.
+
+**The `<hash>` is all the server can log — it is *not* the command.** The Nx client only ever sends the opaque task hash in the URL (`/v1/cache/{hash}`); there is no header or body field carrying the target/command. To correlate a hash back to a command you must look client-side (e.g. `NX_VERBOSE_LOGGING=true`). There is no request-logging middleware (e.g. `tower-http::trace`) wired in.
 
 ## Gotchas & known rough edges
 
