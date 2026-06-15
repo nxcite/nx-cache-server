@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::fmt;
+use std::net::IpAddr;
 
 #[derive(Debug)]
 pub enum ConfigError {
@@ -113,6 +114,14 @@ pub trait ConfigValidator {
 pub struct ServerConfig {
     #[arg(long, env = "PORT", default_value = "3000", help = "HTTP server port")]
     pub port: u16,
+
+    #[arg(
+        long,
+        env = "BIND_ADDRESS",
+        default_value = "0.0.0.0",
+        help = "IP address to bind the HTTP server to. Use :: to listen on IPv6 (dual-stack on Linux when net.ipv6.bindv6only=0)"
+    )]
+    pub bind_address: IpAddr,
 
     #[arg(
         long,
