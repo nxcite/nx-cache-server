@@ -42,9 +42,10 @@ pub async fn run_server<T: StorageProvider + Clone>(
     };
 
     let app = create_router::<T>(&app_state).with_state(app_state);
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", config.port)).await?;
+    let addr = std::net::SocketAddr::new(config.bind_address, config.port);
+    let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    tracing::info!("Server running on port {}", config.port);
+    tracing::info!("Server running on {}", addr);
     axum::serve(listener, app).await?;
 
     Ok(())
