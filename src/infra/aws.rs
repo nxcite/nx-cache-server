@@ -1,13 +1,20 @@
 use async_trait::async_trait;
 use aws_config::default_provider::credentials::DefaultCredentialsChain;
+use aws_config::environment::region::EnvironmentVariableRegionProvider;
+use aws_config::imds::region::ImdsRegionProvider;
 use aws_config::meta::region::future::ProvideRegion as ProvideRegionFuture;
 use aws_config::meta::region::{ProvideRegion, RegionProviderChain};
+use aws_config::profile::region::ProfileFileRegionProvider;
+use aws_config::provider_config::ProviderConfig;
 use aws_credential_types::provider::future::ProvideCredentials as ProvideCredentialsFuture;
 use aws_sdk_s3::config::timeout::TimeoutConfig;
+use aws_sdk_s3::config::SharedHttpClient;
 use aws_sdk_s3::config::{Credentials, ProvideCredentials};
 use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::operation::head_object::HeadObjectError;
 use aws_sdk_s3::{config::Region, Client, Config as S3Config};
+use aws_smithy_http_client::tls::rustls_provider::CryptoMode;
+use aws_smithy_http_client::{tls, Builder as HttpClientBuilder};
 use clap::Parser;
 use tokio::io::AsyncRead;
 use tokio_stream::StreamExt;
@@ -17,6 +24,18 @@ use crate::domain::{
     config::{ConfigError, ConfigValidator},
     storage::{StorageError, StorageProvider},
 };
+
+/// HTTPS client backed by rustls + ring.
+///
+/// Avoids the SDK default (`aws-lc-rs` → `aws-lc-sys`), which needs a
+/// C/CMake/NASM toolchain and broke cross-platform release builds. Disabling
+/// `default-https-client` drops the SDK's auto connector, so this is wired
+/// explicitly into the S3 client and the credential/region chains below.
+fn https_client() -> SharedHttpClient {
+    HttpClientBuilder::new()
+        .tls_provider(tls::Provider::Rustls(CryptoMode::Ring))
+        .build_https()
+}
 
 #[derive(Parser, Debug, Clone)]
 pub struct AwsStorageConfig {
@@ -74,9 +93,22 @@ pub struct AwsStorageConfig {
 impl ProvideRegion for AwsStorageConfig {
     fn region(&self) -> ProvideRegionFuture<'_> {
         let region = self.region.clone();
-        ProvideRegionFuture::new(async {
+        ProvideRegionFuture::new(async move {
+            // Rebuild the env -> profile -> IMDS chain with our client, since
+            // `or_default_provider()` would have no transport without it.
+            let provider_config = ProviderConfig::default().with_http_client(https_client());
             RegionProviderChain::first_try(region.map(Region::new))
-                .or_default_provider()
+                .or_else(EnvironmentVariableRegionProvider::new())
+                .or_else(
+                    ProfileFileRegionProvider::builder()
+                        .configure(&provider_config)
+                        .build(),
+                )
+                .or_else(
+                    ImdsRegionProvider::builder()
+                        .configure(&provider_config)
+                        .build(),
+                )
                 .region()
                 .await
         })
@@ -99,7 +131,11 @@ impl ProvideCredentials for AwsStorageConfig {
                 )))
             }
             _ => ProvideCredentialsFuture::new(async {
+                // `DefaultCredentialsChain::build()` panics without a configured
+                // connector once `default-https-client` is disabled.
+                let provider_config = ProviderConfig::default().with_http_client(https_client());
                 DefaultCredentialsChain::builder()
+                    .configure(provider_config)
                     .region(self.clone())
                     .build()
                     .await
@@ -151,6 +187,7 @@ impl S3Storage {
 
         let mut s3_config_builder = S3Config::builder()
             .behavior_version_latest()
+            .http_client(https_client())
             .region(region)
             .credentials_provider(config.clone())
             .timeout_config(
