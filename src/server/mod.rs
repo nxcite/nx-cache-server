@@ -74,13 +74,14 @@ mod tests {
         body::to_bytes,
         http::{Request, StatusCode},
     };
+    use bytes::Bytes;
     use std::collections::HashMap;
     use std::net::{IpAddr, Ipv4Addr};
     use tokio::{
         io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader},
         sync::RwLock,
     };
-    use tokio_util::io::ReaderStream;
+    use tokio_stream::Stream;
     use tower::ServiceExt;
 
     #[derive(Clone)]
@@ -103,7 +104,8 @@ mod tests {
         async fn store(
             &self,
             _hash: &str,
-            _data: ReaderStream<impl AsyncRead + Send + Unpin>,
+            _data: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+            _content_length: u64,
         ) -> Result<(), StorageError> {
             Ok(())
         }
@@ -125,7 +127,8 @@ mod tests {
         async fn store(
             &self,
             _hash: &str,
-            _data: ReaderStream<impl AsyncRead + Send + Unpin>,
+            _data: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+            _content_length: u64,
         ) -> Result<(), StorageError> {
             panic!("a collision must not reach storage")
         }
@@ -147,8 +150,10 @@ mod tests {
         async fn store(
             &self,
             hash: &str,
-            mut data: ReaderStream<impl AsyncRead + Send + Unpin>,
+            data: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+            _content_length: u64,
         ) -> Result<(), StorageError> {
+            let mut data = std::pin::pin!(data);
             let mut bytes = Vec::new();
             while let Some(chunk) = data.next().await {
                 bytes.extend_from_slice(&chunk.map_err(|_| StorageError::OperationFailed)?);

@@ -8,17 +8,22 @@ use aws_config::profile::region::ProfileFileRegionProvider;
 use aws_config::provider_config::ProviderConfig;
 use aws_credential_types::provider::future::ProvideCredentials as ProvideCredentialsFuture;
 use aws_sdk_s3::config::timeout::TimeoutConfig;
-use aws_sdk_s3::config::SharedHttpClient;
 use aws_sdk_s3::config::{Credentials, ProvideCredentials};
+use aws_sdk_s3::config::{RequestChecksumCalculation, SharedHttpClient};
 use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::operation::head_object::HeadObjectError;
 use aws_sdk_s3::{config::Region, Client, Config as S3Config};
 use aws_smithy_http_client::tls::rustls_provider::CryptoMode;
 use aws_smithy_http_client::{tls, Builder as HttpClientBuilder};
+use aws_smithy_types::body::SdkBody;
+use aws_smithy_types::byte_stream::ByteStream;
+use bytes::Bytes;
 use clap::Parser;
+use http_body::Frame;
+use http_body_util::StreamBody;
+use sync_wrapper::SyncStream;
 use tokio::io::AsyncRead;
-use tokio_stream::StreamExt;
-use tokio_util::io::ReaderStream;
+use tokio_stream::{Stream, StreamExt};
 
 use crate::domain::{
     config::{ConfigError, ConfigValidator},
@@ -200,7 +205,12 @@ impl S3Storage {
         if let Some(endpoint_url) = &config.endpoint_url {
             s3_config_builder = s3_config_builder
                 .endpoint_url(endpoint_url)
-                .force_path_style(true); // Required for most S3-compatible services
+                .force_path_style(true) // Required for most S3-compatible services
+                // The SDK's default integrity checksum streams the body as a
+                // single aws-chunked chunk, which S3-compatible services often
+                // reject (MinIO caps chunks at 16MiB). AWS itself accepts it,
+                // so only skip checksums for custom endpoints.
+                .request_checksum_calculation(RequestChecksumCalculation::WhenRequired);
         }
 
         let s3_config = s3_config_builder.build();
@@ -211,6 +221,40 @@ impl S3Storage {
             client,
             bucket_name: config.bucket_name.clone(),
         })
+    }
+}
+
+/// http_body::Body wrapper that reports an exact size hint.
+///
+/// Streaming bodies otherwise have an unknown size, which the SDK rejects for
+/// S3 PutObject (`UnsizedRequestBody`): it needs the exact size up front to
+/// set Content-Length and to stream the default integrity checksum as an
+/// aws-chunked trailer.
+struct SizedBody<B> {
+    inner: B,
+    size: u64,
+}
+
+impl<B> http_body::Body for SizedBody<B>
+where
+    B: http_body::Body + Unpin,
+{
+    type Data = B::Data;
+    type Error = B::Error;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        std::pin::Pin::new(&mut self.inner).poll_frame(cx)
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        http_body::SizeHint::with_exact(self.size)
     }
 }
 
@@ -239,27 +283,30 @@ impl StorageProvider for S3Storage {
     async fn store(
         &self,
         hash: &str,
-        mut data: ReaderStream<impl AsyncRead + Send + Unpin>,
+        data: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+        content_length: u64,
     ) -> Result<(), StorageError> {
         if self.exists(hash).await? {
             return Err(StorageError::AlreadyExists);
         }
 
-        // For simplicity, read all data into memory first
-        // TODO: Implement true streaming for better memory efficiency
-        let mut buffer = Vec::new();
-        while let Some(chunk) = data.next().await {
-            let chunk = chunk.map_err(|_| StorageError::OperationFailed)?;
-            buffer.extend_from_slice(&chunk);
-        }
-
-        let body = aws_sdk_s3::primitives::ByteStream::from(buffer);
+        // Stream the data directly to S3 without buffering. The SDK requires
+        // request bodies to be Sync; SyncStream is a zero-cost wrapper that
+        // restores Sync for streams only ever polled from one place. SizedBody
+        // reports the exact size, which the SDK needs to set Content-Length and
+        // to compute the default integrity checksum while streaming.
+        let stream = SyncStream::new(Box::pin(data.map(|chunk| chunk.map(Frame::data))));
+        let body = SizedBody {
+            inner: StreamBody::new(stream),
+            size: content_length,
+        };
+        let byte_stream = ByteStream::new(SdkBody::from_body_1_x(body));
 
         self.client
             .put_object()
             .bucket(&self.bucket_name)
             .key(hash)
-            .body(body)
+            .body(byte_stream)
             .send()
             .await
             .map_err(|e| {
