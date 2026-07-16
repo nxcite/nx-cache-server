@@ -28,6 +28,12 @@ aws-sdk-s3 = { version = "1.0", default-features = false, features = ["rt-tokio"
 # aws-lc-sys (C/CMake/NASM toolchain) and breaks cross-platform release builds.
 aws-smithy-http-client = { version = "1.1", default-features = false, features = ["rustls-ring"] }
 aws-credential-types = "1.2.10"
+# Streaming PUT bodies through to S3 (all already in the tree transitively)
+bytes = "1"
+http-body = "1"
+http-body-util = "0.1"
+sync_wrapper = { version = "1", features = ["futures"] }
+aws-smithy-types = { version = "1", features = ["http-body-1-x"] }
 
 [profile.release]
 strip = true         # Remove all symbols
