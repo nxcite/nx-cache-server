@@ -38,7 +38,10 @@ jobs:
     name: Build Release Binaries
     needs: validate
     strategy:
-      fail-fast: true
+      # Keep other targets building even if one platform fails, so a single
+      # flaky/broken target (e.g. Windows) can't cancel the in-flight macOS
+      # ARM64 job and silently drop it from the release assets.
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
