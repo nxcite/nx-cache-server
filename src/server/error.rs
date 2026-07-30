@@ -30,6 +30,13 @@ impl IntoResponse for ServerError {
             ServerError::Storage(StorageError::AlreadyExists) => {
                 (StatusCode::CONFLICT, "Cannot override an existing record")
             }
+            // The Nx client's self-hosted remote cache treats 403 on a cache write as
+            // "read-only token, skip storing this entry" rather than a failure - see
+            // https://github.com/nrwl/nx/blob/master/packages/nx/src/native/cache/http_remote_cache.rs
+            ServerError::Storage(StorageError::PermissionDenied) => (
+                StatusCode::FORBIDDEN,
+                "Storage credentials do not permit this operation",
+            ),
 
             // HTTP-specific errors
             ServerError::BadRequest => (StatusCode::BAD_REQUEST, "Bad request"),

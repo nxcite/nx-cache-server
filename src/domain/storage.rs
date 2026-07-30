@@ -11,6 +11,8 @@ pub enum StorageError {
     AlreadyExists,
     #[error("Storage operation failed")]
     OperationFailed,
+    #[error("Storage credentials do not permit this operation")]
+    PermissionDenied,
 }
 
 #[async_trait]

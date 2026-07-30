@@ -10,6 +10,7 @@ use aws_credential_types::provider::future::ProvideCredentials as ProvideCredent
 use aws_sdk_s3::config::timeout::TimeoutConfig;
 use aws_sdk_s3::config::SharedHttpClient;
 use aws_sdk_s3::config::{Credentials, ProvideCredentials};
+use aws_sdk_s3::error::ProvideErrorMetadata;
 use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::operation::head_object::HeadObjectError;
 use aws_sdk_s3::{config::Region, Client, Config as S3Config};
@@ -263,8 +264,22 @@ impl StorageProvider for S3Storage {
             .send()
             .await
             .map_err(|e| {
-                tracing::error!("S3 put_object failed: {:?}", e);
-                StorageError::OperationFailed
+                // AccessDenied on PutObject isn't a modeled S3 error variant (unlike
+                // NoSuchKey on GetObject), so it only surfaces via the generic error
+                // metadata rather than a matchable enum case. A read-only credential
+                // hitting this is an expected configuration, not a server fault - callers
+                // (e.g. the Nx client's self-hosted remote cache) already treat 403 on a
+                // cache write as "can't store, continue without caching this entry".
+                if e.code() == Some("AccessDenied") {
+                    tracing::warn!(
+                        "S3 put_object denied, likely a read-only credential: {}",
+                        e.message().unwrap_or("Access Denied")
+                    );
+                    StorageError::PermissionDenied
+                } else {
+                    tracing::error!("S3 put_object failed: {:?}", e);
+                    StorageError::OperationFailed
+                }
             })?;
 
         Ok(())
