@@ -7,6 +7,7 @@ use aws_config::meta::region::{ProvideRegion, RegionProviderChain};
 use aws_config::profile::region::ProfileFileRegionProvider;
 use aws_config::provider_config::ProviderConfig;
 use aws_credential_types::provider::future::ProvideCredentials as ProvideCredentialsFuture;
+use aws_sdk_s3::config::retry::RetryConfig;
 use aws_sdk_s3::config::timeout::TimeoutConfig;
 use aws_sdk_s3::config::SharedHttpClient;
 use aws_sdk_s3::config::{Credentials, ProvideCredentials};
@@ -190,9 +191,15 @@ impl S3Storage {
             .http_client(https_client())
             .region(region)
             .credentials_provider(config.clone())
+            .retry_config(
+                RetryConfig::standard()
+                    .with_max_attempts(5)
+                    .with_initial_backoff(std::time::Duration::from_millis(200)),
+            )
             .timeout_config(
                 TimeoutConfig::builder()
                     .operation_timeout(std::time::Duration::from_secs(config.timeout_seconds))
+                    .operation_attempt_timeout(std::time::Duration::from_secs(5))
                     .build(),
             );
 
