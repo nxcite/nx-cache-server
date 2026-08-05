@@ -15,6 +15,10 @@ pub async fn store_artifact<T: StorageProvider>(
     validation::validate_hash(&hash)?;
 
     if state.storage.exists(&hash).await? {
+        // Same reason as the 403 in auth_middleware: let the client finish
+        // uploading, or it never sees this 409. Keys are content-addressed, so
+        // the copy being discarded is byte-identical to the stored one.
+        crate::server::drain_body(body).await;
         return Ok((StatusCode::CONFLICT, "Cannot override an existing record"));
     }
 
