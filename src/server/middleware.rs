@@ -49,6 +49,13 @@ where
     // token. This lets untrusted CI jobs (e.g. PR builds) use the cache
     // without being able to poison it (CVE-2025-36852 / CREEP).
     if !is_read_write && request.method() != Method::GET {
+        // Take the upload to completion before answering. Responding while the
+        // client is still sending leaves an unread request body, so the
+        // connection is closed under it: the client sees a write error rather
+        // than this 403, and Nx fails the task even though it treats a 403
+        // itself as "not stored, carry on". Only authenticated callers get
+        // here, so no untrusted body is read.
+        crate::server::drain_body(request.into_body()).await;
         return Err(StatusCode::FORBIDDEN);
     }
 
