@@ -3,13 +3,15 @@ use crate::server::{error::ServerError, validation, AppState};
 use axum::{
     body::Body,
     extract::{Path, State},
-    http::StatusCode,
+    http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
 };
+use tokio_stream::StreamExt;
 
 pub async fn store_artifact<T: StorageProvider>(
     Path(hash): Path<String>,
     State(state): State<AppState<T>>,
+    headers: HeaderMap,
     body: Body,
 ) -> Result<impl IntoResponse, ServerError> {
     validation::validate_hash(&hash)?;
@@ -18,16 +20,30 @@ pub async fn store_artifact<T: StorageProvider>(
         return Ok((StatusCode::CONFLICT, "Cannot override an existing record"));
     }
 
-    // For now, let's use a simpler approach - collect the body into bytes
-    // TODO: Implement true streaming later for better memory efficiency
-    let bytes = axum::body::to_bytes(body, usize::MAX)
-        .await
-        .map_err(|_| ServerError::BadRequest)?;
+    let content_length = headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok());
 
-    let cursor = std::io::Cursor::new(bytes);
-    let reader_stream = tokio_util::io::ReaderStream::new(cursor);
-
-    state.storage.store(&hash, reader_stream).await?;
+    match content_length {
+        // Stream the body straight through to storage without buffering.
+        Some(length) => {
+            let stream = body
+                .into_data_stream()
+                .map(|chunk| chunk.map_err(std::io::Error::other));
+            state.storage.store(&hash, stream, length).await?;
+        }
+        // No Content-Length (e.g. chunked transfer encoding): buffer to learn
+        // the size, since object stores require it up front.
+        None => {
+            let bytes = axum::body::to_bytes(body, usize::MAX)
+                .await
+                .map_err(|_| ServerError::BadRequest)?;
+            let length = bytes.len() as u64;
+            let stream = tokio_stream::once(Ok(bytes));
+            state.storage.store(&hash, stream, length).await?;
+        }
+    }
 
     Ok((StatusCode::ACCEPTED, ""))
 }
