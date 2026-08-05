@@ -236,7 +236,8 @@ export AWS_REGION="us-west-2"
 export S3_ENDPOINT_URL="your-s3-endpoint-url"   # For S3-compatible services like MinIO
 export S3_TIMEOUT="30"                          # S3 operation timeout in seconds (default: 30)
 export PORT="3000"                              # Server port (default: 3000)
-export BIND_ADDRESS="0.0.0.0"                   # IP to bind to (default: 0.0.0.0). Use "::" for IPv6/dual-stack</code>
+export BIND_ADDRESS="0.0.0.0"                   # IP to bind to (default: 0.0.0.0). Use "::" for IPv6/dual-stack
+export READ_ONLY_ACCESS_TOKEN="your-ro-token"   # Read-only token for untrusted CI jobs (e.g. PR builds) — protects against cache poisoning (CVE-2025-36852 / CREEP)</code>
                                 </div>
                             </div>
 
@@ -318,7 +319,8 @@ export SERVICE_ACCESS_TOKEN="my-secure-token"
                         <code class="text-sm text-gray-800 block whitespace-pre"># Point Nx to your cache server
 export NX_SELF_HOSTED_REMOTE_CACHE_SERVER="http://localhost:3000"
 
-# Authentication token (must match SERVICE_ACCESS_TOKEN from server config)
+# Authentication token (must match SERVICE_ACCESS_TOKEN from server config,
+# or READ_ONLY_ACCESS_TOKEN for jobs that should not write to the cache)
 export NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN="your-bearer-token"
 
 # Optional: Disable TLS certificate validation (e.g. for development/testing environment)

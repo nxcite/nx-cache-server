@@ -66,6 +66,7 @@ export S3_ENDPOINT_URL="your-s3-endpoint-url"   # For S3-compatible services lik
 export S3_TIMEOUT="30"                          # S3 operation timeout in seconds (default: 30)
 export PORT="3000"                              # Server port (default: 3000)
 export BIND_ADDRESS="0.0.0.0"                   # IP to bind to (default: 0.0.0.0). Use "::" for IPv6/dual-stack
+export READ_ONLY_ACCESS_TOKEN="your-ro-token"   # Read-only token for untrusted CI jobs (see "Protecting against cache poisoning")
 ```
 
 ##### Option B: Command Line Arguments
@@ -116,7 +117,8 @@ To configure your Nx workspace to use this cache server, set the following envir
 # Point Nx to your cache server
 export NX_SELF_HOSTED_REMOTE_CACHE_SERVER="http://localhost:3000"
 
-# Authentication token (must match SERVICE_ACCESS_TOKEN from server config)
+# Authentication token (must match SERVICE_ACCESS_TOKEN from server config,
+# or READ_ONLY_ACCESS_TOKEN for jobs that should not write to the cache)
 export NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN="your-bearer-token"
 
 # Optional: Disable TLS certificate validation (e.g. for development/testing environment)
@@ -126,6 +128,19 @@ export NODE_TLS_REJECT_UNAUTHORIZED="0"
 Once configured, Nx will automatically use your cache server for storing and retrieving build artifacts.
 
 For more details, see the [Nx documentation](https://nx.dev/recipes/running-tasks/self-hosted-caching#usage-notes).
+
+### Protecting against cache poisoning (CVE-2025-36852 / CREEP)
+
+If untrusted contributors can run CI with cache **write** access (typically pull request builds), they can pre-seed the cache entry for a hash that a trusted branch will later compute — and the trusted build will replay the poisoned artifact ([CVE-2025-36852, "CREEP"](https://nx.dev/blog/cve-2025-36852-critical-cache-poisoning-vulnerability-creep)). Write-once semantics don't prevent this: the attack writes *first*, it never overwrites.
+
+The mitigation is to keep untrusted jobs read-only. Configure a second token on the server:
+
+```bash
+export SERVICE_ACCESS_TOKEN="your-rw-token"     # trusted builds (main/release): read-write
+export READ_ONLY_ACCESS_TOKEN="your-ro-token"   # untrusted builds (PRs): read-only
+```
+
+Then set `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` to the read-only token in PR pipelines and to the read-write token only in trusted-branch pipelines. A read-only token can retrieve artifacts as usual but gets `403 Forbidden` on writes, so untrusted jobs still benefit from cache hits without being able to poison the cache.
 
 ---
 

@@ -130,6 +130,13 @@ pub struct ServerConfig {
     )]
     pub service_access_token: String,
 
+    #[arg(
+        long,
+        env = "READ_ONLY_ACCESS_TOKEN",
+        help = "Optional bearer token granting read-only access. Give this one to untrusted CI jobs (e.g. PR builds) so they can use the cache but not write to it (CVE-2025-36852 / CREEP)"
+    )]
+    pub read_only_access_token: Option<String>,
+
     #[arg(long, env = "DEBUG", help = "Enable debug logging")]
     pub debug: bool,
 }
@@ -138,6 +145,19 @@ impl ConfigValidator for ServerConfig {
     async fn validate(&self) -> Result<(), ConfigError> {
         if self.service_access_token.is_empty() {
             return Err(ConfigError::MissingField("SERVICE_ACCESS_TOKEN"));
+        }
+
+        if let Some(read_only_token) = &self.read_only_access_token {
+            if read_only_token.is_empty() {
+                return Err(ConfigError::Invalid(
+                    "READ_ONLY_ACCESS_TOKEN must not be empty when provided",
+                ));
+            }
+            if read_only_token == &self.service_access_token {
+                return Err(ConfigError::Invalid(
+                    "READ_ONLY_ACCESS_TOKEN must differ from SERVICE_ACCESS_TOKEN, otherwise it would grant write access",
+                ));
+            }
         }
 
         if self.port == 0 {
