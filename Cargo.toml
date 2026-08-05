@@ -10,7 +10,9 @@ path = "src/bin/aws.rs"
 
 [dependencies]
 # Core dependencies
-tokio = { version = "1.0", features = ["rt-multi-thread", "net", "io-util", "macros"] }
+# "time" is for the bound on `drain_body` (see server/mod.rs). It was already
+# reaching us transitively via the AWS SDK; declare it rather than rely on that.
+tokio = { version = "1.0", features = ["rt-multi-thread", "net", "io-util", "macros", "time"] }
 tokio-stream = "0.1"
 axum = "0.8"
 serde = { version = "1.0", features = ["derive"] }
@@ -28,6 +30,11 @@ aws-sdk-s3 = { version = "1.0", default-features = false, features = ["rt-tokio"
 # aws-lc-sys (C/CMake/NASM toolchain) and breaks cross-platform release builds.
 aws-smithy-http-client = { version = "1.1", default-features = false, features = ["rustls-ring"] }
 aws-credential-types = "1.2.10"
+
+[dev-dependencies]
+# `ServiceExt::oneshot` drives the whole router (auth layer included) in-process,
+# so the response table below doesn't need a socket per case.
+tower = { version = "0.5", features = ["util"] }
 
 [profile.release]
 strip = true         # Remove all symbols

@@ -47,8 +47,12 @@ where
 
     // The read-only token may only read; writes require the service access
     // token. This lets untrusted CI jobs (e.g. PR builds) use the cache
-    // without being able to poison it (CVE-2025-36852 / CREEP).
-    if !is_read_write && request.method() != Method::GET {
+    // without being able to poison it (CVE-2025-36852 / CREEP). HEAD is a read
+    // and axum routes it to the GET handler, so it belongs on this side of the
+    // line. The check stays an allowlist, so a method added later fails closed.
+    let method = request.method();
+    let is_read = method == Method::GET || method == Method::HEAD;
+    if !is_read_write && !is_read {
         // Take the upload to completion before answering. Responding while the
         // client is still sending leaves an unread request body, so the
         // connection is closed under it: the client sees a write error rather
