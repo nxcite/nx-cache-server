@@ -476,6 +476,43 @@ mod tests {
         );
     }
 
+    /// What makes the hardcoded method list above a guard rather than a wish:
+    /// every method the table does *not* cover has to be a 405. Adding a method
+    /// to the router without adding rows for it turns its 405 into something
+    /// else, and fails here.
+    #[tokio::test]
+    async fn methods_outside_the_table_are_rejected() {
+        let covered: std::collections::HashSet<_> =
+            all_cases().iter().map(|case| case.method).collect();
+        for method in ["DELETE", "PATCH", "OPTIONS", "TRACE"] {
+            if covered.contains(&method) {
+                continue;
+            }
+            let response = app(MockStorage {
+                exists: ExistsBehavior::Yes,
+                store_fails: false,
+            })
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(format!("/v1/cache/{VALID_HASH}"))
+                    // The write token, so this is a routing answer and not an
+                    // auth one.
+                    .header(header::AUTHORIZATION, format!("Bearer {RW_TOKEN}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::METHOD_NOT_ALLOWED,
+                "{method} is routed somewhere but has no rows in all_cases(), so nothing \
+                 decides what it answers or whether it drains"
+            );
+        }
+    }
+
     /// An unbounded drain would let one authenticated client hold a connection
     /// open indefinitely by never finishing its upload.
     #[tokio::test]
