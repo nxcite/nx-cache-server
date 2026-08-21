@@ -86,6 +86,9 @@ mod tests {
     #[derive(Clone)]
     struct AbsentStorage;
 
+    #[derive(Clone)]
+    struct PresentStorage;
+
     #[derive(Clone, Default)]
     struct MemoryStorage {
         entries: Arc<RwLock<HashMap<String, Vec<u8>>>>,
@@ -103,6 +106,28 @@ mod tests {
             _data: ReaderStream<impl AsyncRead + Send + Unpin>,
         ) -> Result<(), StorageError> {
             Ok(())
+        }
+
+        async fn retrieve(
+            &self,
+            _hash: &str,
+        ) -> Result<Box<dyn AsyncRead + Send + Unpin>, StorageError> {
+            Err(StorageError::NotFound)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for PresentStorage {
+        async fn exists(&self, _hash: &str) -> Result<bool, StorageError> {
+            Ok(true)
+        }
+
+        async fn store(
+            &self,
+            _hash: &str,
+            _data: ReaderStream<impl AsyncRead + Send + Unpin>,
+        ) -> Result<(), StorageError> {
+            panic!("a collision must not reach storage")
         }
 
         async fn retrieve(
@@ -227,6 +252,54 @@ mod tests {
         assert_eq!(
             to_bytes(response.into_body(), usize::MAX).await.unwrap(),
             "OK"
+        );
+    }
+
+    #[tokio::test]
+    async fn collision_is_reported_without_closing_the_upload() {
+        let app_state = AppState {
+            storage: Arc::new(PresentStorage),
+            config: Arc::new(test_config()),
+        };
+        let app = create_router::<PresentStorage>(&app_state).with_state(app_state);
+
+        let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        const BODY_LEN: usize = 8 * 1024 * 1024;
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        stream
+            .write_all(
+                format!(
+                    "PUT /v1/cache/deadbeef HTTP/1.1\r\nHost: localhost\r\n\
+                     Authorization: Bearer read-write-token\r\nContent-Length: {BODY_LEN}\r\n\r\n"
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+
+        let chunk = vec![0u8; 64 * 1024];
+        let mut sent = 0;
+        while sent < BODY_LEN {
+            stream
+                .write_all(&chunk)
+                .await
+                .expect("connection closed while the client was still uploading");
+            sent += chunk.len();
+        }
+
+        let mut status_line = String::new();
+        BufReader::new(stream)
+            .read_line(&mut status_line)
+            .await
+            .unwrap();
+        assert!(
+            status_line.starts_with("HTTP/1.1 409"),
+            "expected a 409 status line, got: {status_line}"
         );
     }
 
