@@ -70,12 +70,26 @@ pub async fn run_server<T: StorageProvider + Clone>(
 mod tests {
     use super::*;
     use crate::domain::storage::StorageError;
+    use axum::{
+        body::to_bytes,
+        http::{Request, StatusCode},
+    };
+    use std::collections::HashMap;
     use std::net::{IpAddr, Ipv4Addr};
-    use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
+    use tokio::{
+        io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader},
+        sync::RwLock,
+    };
     use tokio_util::io::ReaderStream;
+    use tower::ServiceExt;
 
     #[derive(Clone)]
     struct AbsentStorage;
+
+    #[derive(Clone, Default)]
+    struct MemoryStorage {
+        entries: Arc<RwLock<HashMap<String, Vec<u8>>>>,
+    }
 
     #[async_trait::async_trait]
     impl StorageProvider for AbsentStorage {
@@ -99,6 +113,123 @@ mod tests {
         }
     }
 
+    #[async_trait::async_trait]
+    impl StorageProvider for MemoryStorage {
+        async fn exists(&self, hash: &str) -> Result<bool, StorageError> {
+            Ok(self.entries.read().await.contains_key(hash))
+        }
+
+        async fn store(
+            &self,
+            hash: &str,
+            mut data: ReaderStream<impl AsyncRead + Send + Unpin>,
+        ) -> Result<(), StorageError> {
+            let mut bytes = Vec::new();
+            while let Some(chunk) = data.next().await {
+                bytes.extend_from_slice(&chunk.map_err(|_| StorageError::OperationFailed)?);
+            }
+            self.entries.write().await.insert(hash.to_owned(), bytes);
+            Ok(())
+        }
+
+        async fn retrieve(
+            &self,
+            hash: &str,
+        ) -> Result<Box<dyn AsyncRead + Send + Unpin>, StorageError> {
+            let bytes = self
+                .entries
+                .read()
+                .await
+                .get(hash)
+                .cloned()
+                .ok_or(StorageError::NotFound)?;
+            Ok(Box::new(std::io::Cursor::new(bytes)))
+        }
+    }
+
+    fn test_config() -> ServerConfig {
+        ServerConfig {
+            port: 0,
+            bind_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            service_access_token: "read-write-token".to_string(),
+            read_only_access_token: Some("read-only-token".to_string()),
+            debug: false,
+        }
+    }
+
+    fn authorized_request(method: &str, path: &str, body: Body) -> Request<Body> {
+        Request::builder()
+            .method(method)
+            .uri(path)
+            .header("authorization", "Bearer read-write-token")
+            .body(body)
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn cache_routes_follow_the_nx_protocol_without_changing_artifact_bytes() {
+        let storage = MemoryStorage::default();
+        let app_state = AppState {
+            storage: Arc::new(storage.clone()),
+            config: Arc::new(test_config()),
+        };
+        let app = create_router(&app_state).with_state(app_state);
+        let artifact = b"exact artifact bytes\0\xff";
+
+        let response = app
+            .clone()
+            .oneshot(authorized_request(
+                "PUT",
+                "/v1/cache/deadbeef",
+                Body::from(artifact.as_slice()),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(storage.entries.read().await["deadbeef"], artifact);
+
+        let response = app
+            .clone()
+            .oneshot(authorized_request(
+                "GET",
+                "/v1/cache/deadbeef",
+                Body::empty(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()["content-type"],
+            "application/octet-stream"
+        );
+        assert_eq!(
+            to_bytes(response.into_body(), usize::MAX).await.unwrap(),
+            artifact.as_slice()
+        );
+
+        let response = app
+            .clone()
+            .oneshot(authorized_request(
+                "PUT",
+                "/v1/cache/deadbeef",
+                Body::from("replacement"),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_eq!(storage.entries.read().await["deadbeef"], artifact);
+
+        let response = app
+            .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(response.into_body(), usize::MAX).await.unwrap(),
+            "OK"
+        );
+    }
+
     /// A refused write must still reach the client as a 403. The client is
     /// mid-upload when the decision is made, so the body has to be taken to
     /// completion first — otherwise the connection closes under it and the
@@ -107,13 +238,7 @@ mod tests {
     async fn read_only_write_is_refused_without_closing_the_upload() {
         let app_state = AppState {
             storage: Arc::new(AbsentStorage),
-            config: Arc::new(ServerConfig {
-                port: 0,
-                bind_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                service_access_token: "read-write-token".to_string(),
-                read_only_access_token: Some("read-only-token".to_string()),
-                debug: false,
-            }),
+            config: Arc::new(test_config()),
         };
         let app = create_router::<AbsentStorage>(&app_state).with_state(app_state);
 
