@@ -191,18 +191,21 @@ mod tests {
             .unwrap()
     }
 
-    #[tokio::test]
-    async fn cache_routes_follow_the_nx_protocol_without_changing_artifact_bytes() {
-        let storage = MemoryStorage::default();
+    fn test_app<T: StorageProvider + Clone>(storage: T) -> Router {
         let app_state = AppState {
-            storage: Arc::new(storage.clone()),
+            storage: Arc::new(storage),
             config: Arc::new(test_config()),
         };
-        let app = create_router(&app_state).with_state(app_state);
+        create_router(&app_state).with_state(app_state)
+    }
+
+    #[tokio::test]
+    async fn successful_upload_returns_ok_and_preserves_artifact_bytes() {
+        let storage = MemoryStorage::default();
+        let app = test_app(storage.clone());
         let artifact = b"exact artifact bytes\0\xff";
 
         let response = app
-            .clone()
             .oneshot(authorized_request(
                 "PUT",
                 "/v1/cache/deadbeef",
@@ -212,9 +215,20 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(storage.entries.read().await["deadbeef"], artifact);
+    }
+
+    #[tokio::test]
+    async fn retrieve_returns_exact_artifact_with_binary_content_type() {
+        let storage = MemoryStorage::default();
+        let artifact = b"exact artifact bytes\0\xff";
+        storage
+            .entries
+            .write()
+            .await
+            .insert("deadbeef".to_owned(), artifact.to_vec());
+        let app = test_app(storage);
 
         let response = app
-            .clone()
             .oneshot(authorized_request(
                 "GET",
                 "/v1/cache/deadbeef",
@@ -231,9 +245,20 @@ mod tests {
             to_bytes(response.into_body(), usize::MAX).await.unwrap(),
             artifact.as_slice()
         );
+    }
+
+    #[tokio::test]
+    async fn collision_does_not_replace_the_stored_artifact() {
+        let storage = MemoryStorage::default();
+        let artifact = b"original artifact";
+        storage
+            .entries
+            .write()
+            .await
+            .insert("deadbeef".to_owned(), artifact.to_vec());
+        let app = test_app(storage.clone());
 
         let response = app
-            .clone()
             .oneshot(authorized_request(
                 "PUT",
                 "/v1/cache/deadbeef",
@@ -243,7 +268,11 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::CONFLICT);
         assert_eq!(storage.entries.read().await["deadbeef"], artifact);
+    }
 
+    #[tokio::test]
+    async fn health_check_is_public() {
+        let app = test_app(MemoryStorage::default());
         let response = app
             .oneshot(Request::get("/health").body(Body::empty()).unwrap())
             .await
