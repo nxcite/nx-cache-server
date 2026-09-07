@@ -13,6 +13,9 @@ pub enum ServerError {
     #[error("Unauthorized")]
     Unauthorized,
 
+    #[error("Forbidden")]
+    Forbidden,
+
     #[error("Internal server error")]
     InternalError,
 
@@ -34,6 +37,7 @@ impl IntoResponse for ServerError {
             // HTTP-specific errors
             ServerError::BadRequest => (StatusCode::BAD_REQUEST, "Bad request"),
             ServerError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized"),
+            ServerError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden"),
 
             // Generic fallback - log details but return safe message
             _ => {

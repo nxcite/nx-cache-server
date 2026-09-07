@@ -70,9 +70,11 @@ pub async fn run_server<T: StorageProvider + Clone>(
 mod tests {
     use super::*;
     use crate::domain::storage::StorageError;
+    use axum::http::{header, Request, StatusCode};
     use std::net::{IpAddr, Ipv4Addr};
     use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
     use tokio_util::io::ReaderStream;
+    use tower::ServiceExt;
 
     #[derive(Clone)]
     struct AbsentStorage;
@@ -96,6 +98,115 @@ mod tests {
             _hash: &str,
         ) -> Result<Box<dyn AsyncRead + Send + Unpin>, StorageError> {
             Err(StorageError::NotFound)
+        }
+    }
+
+    /// Every S3 call fails, as during an outage or with broken credentials.
+    #[derive(Clone)]
+    struct BrokenStorage;
+
+    #[async_trait::async_trait]
+    impl StorageProvider for BrokenStorage {
+        async fn exists(&self, _hash: &str) -> Result<bool, StorageError> {
+            Err(StorageError::OperationFailed)
+        }
+
+        async fn store(
+            &self,
+            _hash: &str,
+            _data: ReaderStream<impl AsyncRead + Send + Unpin>,
+        ) -> Result<(), StorageError> {
+            Err(StorageError::OperationFailed)
+        }
+
+        async fn retrieve(
+            &self,
+            _hash: &str,
+        ) -> Result<Box<dyn AsyncRead + Send + Unpin>, StorageError> {
+            Err(StorageError::OperationFailed)
+        }
+    }
+
+    fn app<T: StorageProvider + Clone>(storage: T) -> Router {
+        let app_state = AppState {
+            storage: Arc::new(storage),
+            config: Arc::new(ServerConfig {
+                port: 0,
+                bind_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
+                service_access_token: "read-write-token".to_string(),
+                read_only_access_token: Some("read-only-token".to_string()),
+                debug: false,
+            }),
+        };
+        create_router::<T>(&app_state).with_state(app_state)
+    }
+
+    async fn send(app: Router, req: Request<Body>) -> (StatusCode, Option<String>, String) {
+        let response = app.oneshot(req).await.unwrap();
+        let status = response.status();
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .map(|v| v.to_str().unwrap().to_string());
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (
+            status,
+            content_type,
+            String::from_utf8(body.to_vec()).unwrap(),
+        )
+    }
+
+    /// Nx's store() treats 403 (like 409) as "not stored, carry on" and returns
+    /// Ok(false). Any 5xx is a "Misconfigured remote cache endpoint": cache.put()
+    /// retries six times, re-uploading each time, then fails the task that
+    /// just succeeded. So a storage failure on the write path is a 403.
+    #[tokio::test]
+    async fn failed_write_is_a_403_not_a_500() {
+        let (status, content_type, body) = send(
+            app(BrokenStorage),
+            Request::put("/v1/cache/deadbeef")
+                .header(header::AUTHORIZATION, "Bearer read-write-token")
+                .body(Body::from("artifact"))
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(content_type.as_deref(), Some("text/plain"));
+        assert!(!body.is_empty());
+    }
+
+    /// Nx handles 404 by running the task. Any other status fails it as a
+    /// misconfigured endpoint, so a failed read is a miss, not a 500.
+    #[tokio::test]
+    async fn failed_read_is_a_404_not_a_500() {
+        let (status, _, _) = send(
+            app(BrokenStorage),
+            Request::get("/v1/cache/deadbeef")
+                .header(header::AUTHORIZATION, "Bearer read-only-token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    /// Nx checks for exactly `text/plain` on a 401 and otherwise reports
+    /// "Requests should respond with text/plain on 401s" instead of the
+    /// actual cause. A bare `StatusCode` has no body and no content type.
+    #[tokio::test]
+    async fn auth_failures_carry_a_text_plain_body() {
+        for token in [None, Some("Bearer wrong-token")] {
+            let mut req = Request::get("/v1/cache/deadbeef");
+            if let Some(token) = token {
+                req = req.header(header::AUTHORIZATION, token);
+            }
+            let (status, content_type, body) =
+                send(app(AbsentStorage), req.body(Body::empty()).unwrap()).await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED);
+            assert_eq!(content_type.as_deref(), Some("text/plain"));
+            assert!(!body.is_empty());
         }
     }
 
