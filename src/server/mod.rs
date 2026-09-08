@@ -70,14 +70,29 @@ pub async fn run_server<T: StorageProvider + Clone>(
 mod tests {
     use super::*;
     use crate::domain::storage::StorageError;
-    use axum::http::{header, Request, StatusCode};
+    use axum::{
+        body::to_bytes,
+        http::{header, Request, StatusCode},
+    };
+    use std::collections::HashMap;
     use std::net::{IpAddr, Ipv4Addr};
-    use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
+    use tokio::{
+        io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader},
+        sync::RwLock,
+    };
     use tokio_util::io::ReaderStream;
     use tower::ServiceExt;
 
     #[derive(Clone)]
     struct AbsentStorage;
+
+    #[derive(Clone)]
+    struct PresentStorage;
+
+    #[derive(Clone, Default)]
+    struct MemoryStorage {
+        entries: Arc<RwLock<HashMap<String, Vec<u8>>>>,
+    }
 
     #[async_trait::async_trait]
     impl StorageProvider for AbsentStorage {
@@ -91,6 +106,28 @@ mod tests {
             _data: ReaderStream<impl AsyncRead + Send + Unpin>,
         ) -> Result<(), StorageError> {
             Ok(())
+        }
+
+        async fn retrieve(
+            &self,
+            _hash: &str,
+        ) -> Result<Box<dyn AsyncRead + Send + Unpin>, StorageError> {
+            Err(StorageError::NotFound)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for PresentStorage {
+        async fn exists(&self, _hash: &str) -> Result<bool, StorageError> {
+            Ok(true)
+        }
+
+        async fn store(
+            &self,
+            _hash: &str,
+            _data: ReaderStream<impl AsyncRead + Send + Unpin>,
+        ) -> Result<(), StorageError> {
+            panic!("a collision must not reach storage")
         }
 
         async fn retrieve(
@@ -127,18 +164,65 @@ mod tests {
         }
     }
 
-    fn app<T: StorageProvider + Clone>(storage: T) -> Router {
+    #[async_trait::async_trait]
+    impl StorageProvider for MemoryStorage {
+        async fn exists(&self, hash: &str) -> Result<bool, StorageError> {
+            Ok(self.entries.read().await.contains_key(hash))
+        }
+
+        async fn store(
+            &self,
+            hash: &str,
+            mut data: ReaderStream<impl AsyncRead + Send + Unpin>,
+        ) -> Result<(), StorageError> {
+            let mut bytes = Vec::new();
+            while let Some(chunk) = data.next().await {
+                bytes.extend_from_slice(&chunk.map_err(|_| StorageError::OperationFailed)?);
+            }
+            self.entries.write().await.insert(hash.to_owned(), bytes);
+            Ok(())
+        }
+
+        async fn retrieve(
+            &self,
+            hash: &str,
+        ) -> Result<Box<dyn AsyncRead + Send + Unpin>, StorageError> {
+            let bytes = self
+                .entries
+                .read()
+                .await
+                .get(hash)
+                .cloned()
+                .ok_or(StorageError::NotFound)?;
+            Ok(Box::new(std::io::Cursor::new(bytes)))
+        }
+    }
+
+    fn test_config() -> ServerConfig {
+        ServerConfig {
+            port: 0,
+            bind_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            service_access_token: "read-write-token".to_string(),
+            read_only_access_token: Some("read-only-token".to_string()),
+            debug: false,
+        }
+    }
+
+    fn authorized_request(method: &str, path: &str, body: Body) -> Request<Body> {
+        Request::builder()
+            .method(method)
+            .uri(path)
+            .header("authorization", "Bearer read-write-token")
+            .body(body)
+            .unwrap()
+    }
+
+    fn test_app<T: StorageProvider + Clone>(storage: T) -> Router {
         let app_state = AppState {
             storage: Arc::new(storage),
-            config: Arc::new(ServerConfig {
-                port: 0,
-                bind_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                service_access_token: "read-write-token".to_string(),
-                read_only_access_token: Some("read-only-token".to_string()),
-                debug: false,
-            }),
+            config: Arc::new(test_config()),
         };
-        create_router::<T>(&app_state).with_state(app_state)
+        create_router(&app_state).with_state(app_state)
     }
 
     async fn send(app: Router, req: Request<Body>) -> (StatusCode, Option<String>, String) {
@@ -148,9 +232,7 @@ mod tests {
             .headers()
             .get(header::CONTENT_TYPE)
             .map(|v| v.to_str().unwrap().to_string());
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         (
             status,
             content_type,
@@ -162,11 +244,8 @@ mod tests {
     #[tokio::test]
     async fn failed_write_is_a_403_not_a_500() {
         let (status, content_type, body) = send(
-            app(BrokenStorage),
-            Request::put("/v1/cache/deadbeef")
-                .header(header::AUTHORIZATION, "Bearer read-write-token")
-                .body(Body::from("artifact"))
-                .unwrap(),
+            test_app(BrokenStorage),
+            authorized_request("PUT", "/v1/cache/deadbeef", Body::from("artifact")),
         )
         .await;
         assert_eq!(status, StatusCode::FORBIDDEN);
@@ -178,11 +257,8 @@ mod tests {
     #[tokio::test]
     async fn failed_read_is_a_404_not_a_500() {
         let (status, _, _) = send(
-            app(BrokenStorage),
-            Request::get("/v1/cache/deadbeef")
-                .header(header::AUTHORIZATION, "Bearer read-only-token")
-                .body(Body::empty())
-                .unwrap(),
+            test_app(BrokenStorage),
+            authorized_request("GET", "/v1/cache/deadbeef", Body::empty()),
         )
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
@@ -197,11 +273,144 @@ mod tests {
                 req = req.header(header::AUTHORIZATION, token);
             }
             let (status, content_type, body) =
-                send(app(AbsentStorage), req.body(Body::empty()).unwrap()).await;
+                send(test_app(AbsentStorage), req.body(Body::empty()).unwrap()).await;
             assert_eq!(status, StatusCode::UNAUTHORIZED);
             assert_eq!(content_type.as_deref(), Some("text/plain"));
             assert!(!body.is_empty());
         }
+    }
+
+    #[tokio::test]
+    async fn successful_upload_returns_ok_and_preserves_artifact_bytes() {
+        let storage = MemoryStorage::default();
+        let app = test_app(storage.clone());
+        let artifact = b"exact artifact bytes\0\xff";
+
+        let response = app
+            .oneshot(authorized_request(
+                "PUT",
+                "/v1/cache/deadbeef",
+                Body::from(artifact.as_slice()),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(storage.entries.read().await["deadbeef"], artifact);
+    }
+
+    #[tokio::test]
+    async fn retrieve_returns_exact_artifact_with_binary_content_type() {
+        let storage = MemoryStorage::default();
+        let artifact = b"exact artifact bytes\0\xff";
+        storage
+            .entries
+            .write()
+            .await
+            .insert("deadbeef".to_owned(), artifact.to_vec());
+        let app = test_app(storage);
+
+        let response = app
+            .oneshot(authorized_request(
+                "GET",
+                "/v1/cache/deadbeef",
+                Body::empty(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()["content-type"],
+            "application/octet-stream"
+        );
+        assert_eq!(
+            to_bytes(response.into_body(), usize::MAX).await.unwrap(),
+            artifact.as_slice()
+        );
+    }
+
+    #[tokio::test]
+    async fn collision_does_not_replace_the_stored_artifact() {
+        let storage = MemoryStorage::default();
+        let artifact = b"original artifact";
+        storage
+            .entries
+            .write()
+            .await
+            .insert("deadbeef".to_owned(), artifact.to_vec());
+        let app = test_app(storage.clone());
+
+        let response = app
+            .oneshot(authorized_request(
+                "PUT",
+                "/v1/cache/deadbeef",
+                Body::from("replacement"),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_eq!(storage.entries.read().await["deadbeef"], artifact);
+    }
+
+    #[tokio::test]
+    async fn health_check_is_public() {
+        let app = test_app(MemoryStorage::default());
+        let response = app
+            .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(response.into_body(), usize::MAX).await.unwrap(),
+            "OK"
+        );
+    }
+
+    #[tokio::test]
+    async fn collision_is_reported_without_closing_the_upload() {
+        let app_state = AppState {
+            storage: Arc::new(PresentStorage),
+            config: Arc::new(test_config()),
+        };
+        let app = create_router::<PresentStorage>(&app_state).with_state(app_state);
+
+        let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        const BODY_LEN: usize = 8 * 1024 * 1024;
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        stream
+            .write_all(
+                format!(
+                    "PUT /v1/cache/deadbeef HTTP/1.1\r\nHost: localhost\r\n\
+                     Authorization: Bearer read-write-token\r\nContent-Length: {BODY_LEN}\r\n\r\n"
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+
+        let chunk = vec![0u8; 64 * 1024];
+        let mut sent = 0;
+        while sent < BODY_LEN {
+            stream
+                .write_all(&chunk)
+                .await
+                .expect("connection closed while the client was still uploading");
+            sent += chunk.len();
+        }
+
+        let mut status_line = String::new();
+        BufReader::new(stream)
+            .read_line(&mut status_line)
+            .await
+            .unwrap();
+        assert!(
+            status_line.starts_with("HTTP/1.1 409"),
+            "expected a 409 status line, got: {status_line}"
+        );
     }
 
     /// A refused write must still reach the client as a 403. The client is
@@ -212,13 +421,7 @@ mod tests {
     async fn read_only_write_is_refused_without_closing_the_upload() {
         let app_state = AppState {
             storage: Arc::new(AbsentStorage),
-            config: Arc::new(ServerConfig {
-                port: 0,
-                bind_address: IpAddr::V4(Ipv4Addr::LOCALHOST),
-                service_access_token: "read-write-token".to_string(),
-                read_only_access_token: Some("read-only-token".to_string()),
-                debug: false,
-            }),
+            config: Arc::new(test_config()),
         };
         let app = create_router::<AbsentStorage>(&app_state).with_state(app_state);
 

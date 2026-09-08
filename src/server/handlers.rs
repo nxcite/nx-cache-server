@@ -53,7 +53,7 @@ pub async fn store_artifact<T: StorageProvider>(
         return Err(ServerError::Forbidden);
     }
 
-    Ok((StatusCode::ACCEPTED, ""))
+    Ok((StatusCode::OK, ""))
 }
 
 pub async fn retrieve_artifact<T: StorageProvider>(
