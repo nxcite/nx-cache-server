@@ -72,7 +72,7 @@ mod tests {
     use crate::domain::storage::StorageError;
     use axum::{
         body::to_bytes,
-        http::{Request, StatusCode},
+        http::{header, Request, StatusCode},
     };
     use std::collections::HashMap;
     use std::net::{IpAddr, Ipv4Addr};
@@ -138,6 +138,32 @@ mod tests {
         }
     }
 
+    /// Every S3 call fails, as during an outage or with broken credentials.
+    #[derive(Clone)]
+    struct BrokenStorage;
+
+    #[async_trait::async_trait]
+    impl StorageProvider for BrokenStorage {
+        async fn exists(&self, _hash: &str) -> Result<bool, StorageError> {
+            Err(StorageError::OperationFailed)
+        }
+
+        async fn store(
+            &self,
+            _hash: &str,
+            _data: ReaderStream<impl AsyncRead + Send + Unpin>,
+        ) -> Result<(), StorageError> {
+            Err(StorageError::OperationFailed)
+        }
+
+        async fn retrieve(
+            &self,
+            _hash: &str,
+        ) -> Result<Box<dyn AsyncRead + Send + Unpin>, StorageError> {
+            Err(StorageError::OperationFailed)
+        }
+    }
+
     #[async_trait::async_trait]
     impl StorageProvider for MemoryStorage {
         async fn exists(&self, hash: &str) -> Result<bool, StorageError> {
@@ -197,6 +223,61 @@ mod tests {
             config: Arc::new(test_config()),
         };
         create_router(&app_state).with_state(app_state)
+    }
+
+    async fn send(app: Router, req: Request<Body>) -> (StatusCode, Option<String>, String) {
+        let response = app.oneshot(req).await.unwrap();
+        let status = response.status();
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .map(|v| v.to_str().unwrap().to_string());
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        (
+            status,
+            content_type,
+            String::from_utf8(body.to_vec()).unwrap(),
+        )
+    }
+
+    /// Status-code contract: see the module docs in handlers.rs.
+    #[tokio::test]
+    async fn failed_write_is_a_403_not_a_500() {
+        let (status, content_type, body) = send(
+            test_app(BrokenStorage),
+            authorized_request("PUT", "/v1/cache/deadbeef", Body::from("artifact")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(content_type.as_deref(), Some("text/plain"));
+        assert!(!body.is_empty());
+    }
+
+    /// Status-code contract: see the module docs in handlers.rs.
+    #[tokio::test]
+    async fn failed_read_is_a_404_not_a_500() {
+        let (status, _, _) = send(
+            test_app(BrokenStorage),
+            authorized_request("GET", "/v1/cache/deadbeef", Body::empty()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    /// text/plain on 401: see auth_middleware.
+    #[tokio::test]
+    async fn auth_failures_carry_a_text_plain_body() {
+        for token in [None, Some("Bearer wrong-token")] {
+            let mut req = Request::get("/v1/cache/deadbeef");
+            if let Some(token) = token {
+                req = req.header(header::AUTHORIZATION, token);
+            }
+            let (status, content_type, body) =
+                send(test_app(AbsentStorage), req.body(Body::empty()).unwrap()).await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED);
+            assert_eq!(content_type.as_deref(), Some("text/plain"));
+            assert!(!body.is_empty());
+        }
     }
 
     #[tokio::test]

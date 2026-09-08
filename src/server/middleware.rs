@@ -1,8 +1,8 @@
 use crate::domain::storage::StorageProvider;
-use crate::server::AppState;
+use crate::server::{error::ServerError, AppState};
 use axum::{
     extract::{Request, State},
-    http::{Method, StatusCode},
+    http::Method,
     middleware::Next,
     response::Response,
 };
@@ -12,7 +12,7 @@ pub async fn auth_middleware<T>(
     State(state): State<AppState<T>>,
     request: Request,
     next: Next,
-) -> Result<Response, StatusCode>
+) -> Result<Response, ServerError>
 where
     T: StorageProvider,
 {
@@ -23,9 +23,13 @@ where
         .and_then(|header| header.to_str().ok())
         .and_then(|auth_value| auth_value.strip_prefix("Bearer "));
 
+    // A `ServerError`, not a bare `StatusCode`: Nx requires a `text/plain`
+    // body on 401 and otherwise reports "Misconfigured remote cache endpoint:
+    // Requests should respond with text/plain on 401s" instead of the real
+    // cause (the token), sending the user to debug the server.
     let token = match token {
         Some(t) => t,
-        None => return Err(StatusCode::UNAUTHORIZED),
+        None => return Err(ServerError::Unauthorized),
     };
 
     // Constant-time comparisons for security. Both tokens are always
@@ -42,7 +46,7 @@ where
         .is_some_and(|read_only| bool::from(token.as_bytes().ct_eq(read_only.as_bytes())));
 
     if !is_read_write && !is_read_only {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(ServerError::Unauthorized);
     }
 
     // The read-only token may only read; writes require the service access
@@ -56,7 +60,7 @@ where
         // itself as "not stored, carry on". Only authenticated callers get
         // here, so no untrusted body is read.
         crate::server::drain_body(request.into_body()).await;
-        return Err(StatusCode::FORBIDDEN);
+        return Err(ServerError::Forbidden);
     }
 
     Ok(next.run(request).await)
