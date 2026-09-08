@@ -10,7 +10,7 @@ path = "src/bin/aws.rs"
 
 [dependencies]
 # Core dependencies
-tokio = { version = "1.0", features = ["rt-multi-thread", "net", "io-util", "macros"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "net", "io-util", "macros", "time"] }
 tokio-stream = "0.1"
 axum = "0.8"
 serde = { version = "1.0", features = ["derive"] }

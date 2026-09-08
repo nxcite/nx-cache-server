@@ -107,7 +107,7 @@ export SERVICE_ACCESS_TOKEN="my-secure-token"
 ```bash
 curl http://localhost:3000/health
 ```
-You should receive an "OK" response.
+You should receive an "OK" response. A `503` means the last probe, run once a minute, could not reach S3. The server also refuses to start if the bucket rejects a write, so a wrong IAM policy or credential fails the deploy rather than every build; an unreachable S3 at startup is only logged. Point alerting or a readiness check at `/health`, not a liveness check that restarts the process, or an S3 outage becomes a restart loop.
 
 ### Client Configuration
 
