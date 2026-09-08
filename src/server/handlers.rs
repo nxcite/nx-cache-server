@@ -49,7 +49,7 @@ pub async fn store_artifact<T: StorageProvider>(
 
     state.storage.store(&hash, reader_stream).await?;
 
-    Ok((StatusCode::ACCEPTED, ""))
+    Ok((StatusCode::OK, ""))
 }
 
 pub async fn retrieve_artifact<T: StorageProvider>(
