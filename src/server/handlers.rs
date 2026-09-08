@@ -54,5 +54,9 @@ pub async fn retrieve_artifact<T: StorageProvider>(
 }
 
 pub async fn health_check() -> impl IntoResponse {
-    (StatusCode::OK, "OK")
+    if crate::server::STORAGE_REACHABLE.load(std::sync::atomic::Ordering::Relaxed) {
+        (StatusCode::OK, "OK")
+    } else {
+        (StatusCode::SERVICE_UNAVAILABLE, "storage unreachable")
+    }
 }

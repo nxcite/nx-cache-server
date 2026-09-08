@@ -22,7 +22,7 @@ use tokio_util::io::ReaderStream;
 
 use crate::domain::{
     config::{ConfigError, ConfigValidator},
-    storage::{StorageError, StorageProvider},
+    storage::{StorageError, StorageProvider, PROBE_KEY},
 };
 
 /// HTTPS client backed by rustls + ring.
@@ -206,6 +206,25 @@ impl S3Storage {
         let s3_config = s3_config_builder.build();
 
         let client = Client::from_conf(s3_config);
+
+        // Refuse to start on a bucket we cannot write to. A missing
+        // s3:PutObject or a dead credential otherwise shows up only as cache
+        // writes failing on every CI run, with nothing pointing at the server.
+        // The same key is overwritten in place on every start, so this leaves
+        // one object behind, not one per boot.
+        client
+            .put_object()
+            .bucket(&config.bucket_name)
+            .key(PROBE_KEY)
+            .body(aws_sdk_s3::primitives::ByteStream::from_static(
+                b"nx-cache-server startup probe",
+            ))
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("S3 put_object of the startup probe failed: {:?}", e);
+                StorageError::OperationFailed
+            })?;
 
         Ok(Self {
             client,

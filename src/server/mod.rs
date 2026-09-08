@@ -3,15 +3,24 @@ pub mod handlers;
 pub mod middleware;
 pub mod validation;
 
-use crate::domain::{config::ServerConfig, storage::StorageProvider};
+use crate::domain::{
+    config::ServerConfig,
+    storage::{StorageProvider, PROBE_KEY},
+};
 use axum::{
     body::Body,
     middleware::from_fn_with_state,
     routing::{get, put},
     Router,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio_stream::StreamExt;
+
+/// Whether the last periodic probe reached storage. `/health` reports it.
+pub(crate) static STORAGE_REACHABLE: AtomicBool = AtomicBool::new(true);
+const STORAGE_PROBE_INTERVAL: Duration = Duration::from_secs(60);
 
 #[derive(Clone)]
 pub struct AppState<T: StorageProvider> {
@@ -55,6 +64,22 @@ pub async fn run_server<T: StorageProvider + Clone>(
         storage: Arc::new(storage),
         config: Arc::new(config.clone()),
     };
+
+    // Credentials that expire while the server runs make every cache call
+    // fail with nothing telling the operator. A HeadObject of the key the
+    // startup probe wrote, once a minute, and /health carries the result so
+    // the orchestrator can restart or alert. `interval` ticks immediately.
+    let probe_storage = app_state.storage.clone();
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(STORAGE_PROBE_INTERVAL);
+        loop {
+            ticker.tick().await;
+            let reachable = probe_storage.exists(PROBE_KEY).await.is_ok();
+            if STORAGE_REACHABLE.swap(reachable, Ordering::Relaxed) != reachable {
+                tracing::warn!(reachable, "storage reachability changed");
+            }
+        }
+    });
 
     let app = create_router::<T>(&app_state).with_state(app_state);
     let addr = std::net::SocketAddr::new(config.bind_address, config.port);
@@ -271,17 +296,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn health_check_is_public() {
-        let app = test_app(MemoryStorage::default());
-        let response = app
-            .oneshot(Request::get("/health").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
+    async fn health_check_is_public_and_reports_storage() {
+        let health = || {
+            test_app(MemoryStorage::default())
+                .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+        };
+
+        let response = health().await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
             to_bytes(response.into_body(), usize::MAX).await.unwrap(),
             "OK"
         );
+
+        STORAGE_REACHABLE.store(false, Ordering::Relaxed);
+        let response = health().await.unwrap();
+        STORAGE_REACHABLE.store(true, Ordering::Relaxed);
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
