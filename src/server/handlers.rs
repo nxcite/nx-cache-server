@@ -1,3 +1,16 @@
+//! Status codes toward Nx follow its HTTP remote cache client
+//! (`packages/nx/src/native/cache/http_remote_cache.rs`), which cannot be
+//! deduced from this repo:
+//!
+//! - PUT: 200 = stored, 409/403 = "not stored, carry on". Anything else is
+//!   "Misconfigured remote cache endpoint": `cache.put()` retries six times,
+//!   re-uploading each time, then the task that already succeeded is marked
+//!   failed.
+//! - GET: 200 = hit, 404 = miss (run the task). Anything else fails the task.
+//!
+//! So a storage failure is answered 403 on a write and 404 on a read, never
+//! 5xx. The S3 error is logged at ERROR at the point of failure.
+
 use crate::domain::storage::{StorageError, StorageProvider};
 use crate::server::{error::ServerError, validation, AppState};
 use axum::{
@@ -14,14 +27,11 @@ pub async fn store_artifact<T: StorageProvider>(
 ) -> Result<impl IntoResponse, ServerError> {
     validation::validate_hash(&hash)?;
 
-    // Nx fails the task on any response to a PUT other than 200/409/403 (see
-    // `store` below), so a failed HeadObject must not become a 500. Treat it as
-    // absent and go on to store: keys are content-addressed, so re-writing
-    // bytes that may already be there is a byte-identical no-op.
+    // A failed HeadObject is treated as absent: keys are content-addressed, so
+    // re-writing bytes that may already be there is a byte-identical no-op.
     if state.storage.exists(&hash).await.unwrap_or(false) {
         // Same reason as the 403 in auth_middleware: let the client finish
-        // uploading, or it never sees this 409. Keys are content-addressed, so
-        // the copy being discarded is byte-identical to the stored one.
+        // uploading, or it never sees this 409.
         crate::server::drain_body(body).await;
         return Ok((StatusCode::CONFLICT, "Cannot override an existing record"));
     }
@@ -35,14 +45,6 @@ pub async fn store_artifact<T: StorageProvider>(
     let cursor = std::io::Cursor::new(bytes);
     let reader_stream = tokio_util::io::ReaderStream::new(cursor);
 
-    // A failed write is answered 403, never 500. Nx's `store()`
-    // (packages/nx/src/native/cache/http_remote_cache.rs) returns Ok(true) on
-    // 200 and Ok(false) on 409/403 - "not stored, carry on". Any other status
-    // is "Misconfigured remote cache endpoint": `cache.put()` retries it six
-    // times, re-uploading the artifact each time, then rejects, and the task
-    // orchestrator marks the task - which already succeeded - as failed. The
-    // only cost of the 403 is a later cache miss for this hash. The S3 error
-    // is logged here; alert on that, not on the status code.
     if let Err(e) = state.storage.store(&hash, reader_stream).await {
         tracing::error!(
             hash,
@@ -60,10 +62,6 @@ pub async fn retrieve_artifact<T: StorageProvider>(
 ) -> Result<impl IntoResponse, ServerError> {
     validation::validate_hash(&hash)?;
 
-    // A read that fails is a cache miss. Nx handles 404 by running the task;
-    // any other status fails it as a misconfigured endpoint, after every task
-    // in the run already succeeded. Worst case here is recomputing an
-    // artifact we already had.
     let reader = match state.storage.retrieve(&hash).await {
         Ok(reader) => reader,
         Err(StorageError::NotFound) => return Err(StorageError::NotFound.into()),

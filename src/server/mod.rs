@@ -158,10 +158,7 @@ mod tests {
         )
     }
 
-    /// Nx's store() treats 403 (like 409) as "not stored, carry on" and returns
-    /// Ok(false). Any 5xx is a "Misconfigured remote cache endpoint": cache.put()
-    /// retries six times, re-uploading each time, then fails the task that
-    /// just succeeded. So a storage failure on the write path is a 403.
+    /// Status-code contract: see the module docs in handlers.rs.
     #[tokio::test]
     async fn failed_write_is_a_403_not_a_500() {
         let (status, content_type, body) = send(
@@ -177,8 +174,7 @@ mod tests {
         assert!(!body.is_empty());
     }
 
-    /// Nx handles 404 by running the task. Any other status fails it as a
-    /// misconfigured endpoint, so a failed read is a miss, not a 500.
+    /// Status-code contract: see the module docs in handlers.rs.
     #[tokio::test]
     async fn failed_read_is_a_404_not_a_500() {
         let (status, _, _) = send(
@@ -192,9 +188,7 @@ mod tests {
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
 
-    /// Nx checks for exactly `text/plain` on a 401 and otherwise reports
-    /// "Requests should respond with text/plain on 401s" instead of the
-    /// actual cause. A bare `StatusCode` has no body and no content type.
+    /// text/plain on 401: see auth_middleware.
     #[tokio::test]
     async fn auth_failures_carry_a_text_plain_body() {
         for token in [None, Some("Bearer wrong-token")] {
