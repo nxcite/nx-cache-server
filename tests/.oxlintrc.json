@@ -1,0 +1,20 @@
+{
+    "$schema": "./node_modules/oxlint/configuration_schema.json",
+    "plugins": ["typescript", "unicorn", "oxc", "vitest"],
+    "options": { "typeAware": true },
+    "categories": { "correctness": "error", "suspicious": "error" },
+    "rules": {
+        "eqeqeq": "error",
+        "prefer-const": "error",
+        "typescript/no-misused-promises": "error",
+        "typescript/only-throw-error": "error",
+        "typescript/prefer-promise-reject-errors": "error",
+        "typescript/switch-exhaustiveness-check": "error",
+        "unicorn/prefer-node-protocol": "error",
+        "vitest/expect-expect": ["error", { "assertFunctionNames": ["expect", "expect*"] }],
+        "vitest/valid-expect": ["error", { "maxArgs": 2 }],
+        "vitest/no-identical-title": "error",
+        "no-shadow": "off",
+        "typescript/no-unsafe-type-assertion": "off"
+    }
+}
