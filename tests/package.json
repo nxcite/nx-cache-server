@@ -1,0 +1,36 @@
+{
+    "name": "nx-cache-server-tests",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "test": "vitest run",
+        "test:offline": "vitest run --project offline",
+        "test:e2e": "vitest run --project e2e",
+        "typecheck": "tsc",
+        "lint": "oxlint",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "devEngines": {
+        "runtime": {
+            "name": "node",
+            "version": "24"
+        }
+    },
+    "allowScripts": {
+        "protobufjs": false,
+        "ssh2": false
+    },
+    "devDependencies": {
+        "@aws-sdk/client-s3": "3.1146.0",
+        "@trivago/prettier-plugin-sort-imports": "6.0.2",
+        "@types/node": "24.19.1",
+        "oxlint": "1.86.0",
+        "oxlint-tsgolint": "7.0.2003",
+        "p-retry": "8.0.1",
+        "prettier": "3.9.9",
+        "testcontainers": "12.2.0",
+        "typescript": "7.0.2",
+        "vitest": "5.0.3"
+    }
+}
