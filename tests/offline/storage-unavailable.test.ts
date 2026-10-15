@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { expect, onTestFinished, test } from "vitest";
 import { artifact, uniqueHash } from "../support/artifacts.ts";
+import { IN_FLIGHT_UPLOAD_LENGTH, KeepAliveConnection } from "../support/keep-alive-connection.ts";
 import { ERROR_LOG_LEVEL, startServer } from "../support/nx-cache-aws.ts";
 import { LOOPBACK, boundPort } from "../support/ports.ts";
 import { VALID_ENV, withVariables } from "../support/server-env.ts";
@@ -14,6 +15,19 @@ test("an upload is not acknowledged when storage is unreachable", async () => {
 
     expect(upload.status, "PUT").not.toBe(200);
     expect(health.status, "GET /health afterwards").toBe(200);
+});
+
+test("an upload to unreachable storage is received in full before it is refused", async () => {
+    const server = await startServer(VALID_ENV);
+    const connection = new KeepAliveConnection(server.port);
+
+    const upload = await connection.putStreaming(
+        uniqueHash("unreachable-storage"),
+        "read-write",
+        IN_FLIGHT_UPLOAD_LENGTH,
+    );
+
+    expect(upload.status).not.toBe(200);
 });
 
 test("a download returns no artifact when storage is unreachable", async () => {

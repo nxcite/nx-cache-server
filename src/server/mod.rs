@@ -11,6 +11,7 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+use std::time::Duration;
 use tokio_stream::StreamExt;
 
 #[derive(Clone)]
@@ -19,17 +20,27 @@ pub struct AppState<T: StorageProvider> {
     pub config: Arc<ServerConfig>,
 }
 
+/// How long we go on reading a body we already know we are discarding. There is
+/// no request timeout and no body size limit anywhere else in the stack, so an
+/// unbounded drain would let a caller hold a connection open by trickling a
+/// large declared Content-Length. Past this, that one client gets the write
+/// error it would have got without the drain.
+const DRAIN_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Read and discard a request body so the client can finish uploading before a
 /// response ends the exchange. An unread body forces the connection shut, which
 /// reaches the client as a write error instead of the status it was sent. A
 /// read error means the client is already gone — nothing left to drain.
 pub(crate) async fn drain_body(body: Body) {
-    let mut stream = body.into_data_stream();
-    while let Some(chunk) = stream.next().await {
-        if chunk.is_err() {
-            break;
+    let _ = tokio::time::timeout(DRAIN_TIMEOUT, async move {
+        let mut stream = body.into_data_stream();
+        while let Some(chunk) = stream.next().await {
+            if chunk.is_err() {
+                break;
+            }
         }
-    }
+    })
+    .await;
 }
 
 pub fn create_router<T: StorageProvider + Clone>(app_state: &AppState<T>) -> Router<AppState<T>> {
