@@ -39,11 +39,8 @@ impl IntoResponse for ServerError {
             ServerError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized"),
             ServerError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden"),
 
-            // Generic fallback - log details but return safe message
-            _ => {
-                tracing::error!("Server error: {}", self);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
-            }
+            // Generic fallback - safe message; the request line logs the error.
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
         };
 
         // Exactly "text/plain", no "; charset=utf-8": on a 401 Nx compares the

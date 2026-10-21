@@ -10,6 +10,7 @@ use aws_credential_types::provider::future::ProvideCredentials as ProvideCredent
 use aws_sdk_s3::config::timeout::TimeoutConfig;
 use aws_sdk_s3::config::SharedHttpClient;
 use aws_sdk_s3::config::{Credentials, ProvideCredentials};
+use aws_sdk_s3::error::{ErrorMetadata, ProvideErrorMetadata};
 use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::operation::head_object::HeadObjectError;
 use aws_sdk_s3::{config::Region, Client, Config as S3Config};
@@ -22,7 +23,7 @@ use tokio_util::io::ReaderStream;
 
 use crate::domain::{
     config::{ConfigError, ConfigValidator},
-    storage::{StorageError, StorageProvider},
+    storage::{Retrieved, StorageError, StorageProvider},
 };
 
 /// HTTPS client backed by rustls + ring.
@@ -229,7 +230,7 @@ impl StorageProvider for S3Storage {
             Err(e) => match e.into_service_error() {
                 HeadObjectError::NotFound(_) => Ok(false),
                 other => {
-                    tracing::error!("S3 head_object failed: {:?}", other);
+                    warn_s3_failure("head_object", &other);
                     Err(StorageError::OperationFailed)
                 }
             },
@@ -263,17 +264,14 @@ impl StorageProvider for S3Storage {
             .send()
             .await
             .map_err(|e| {
-                tracing::error!("S3 put_object failed: {:?}", e);
+                warn_s3_failure("put_object", &e.into_service_error());
                 StorageError::OperationFailed
             })?;
 
         Ok(())
     }
 
-    async fn retrieve(
-        &self,
-        hash: &str,
-    ) -> Result<Box<dyn AsyncRead + Send + Unpin>, StorageError> {
+    async fn retrieve(&self, hash: &str) -> Result<Retrieved, StorageError> {
         let result = self
             .client
             .get_object()
@@ -284,12 +282,49 @@ impl StorageProvider for S3Storage {
             .map_err(|e| match e.into_service_error() {
                 GetObjectError::NoSuchKey(_) => StorageError::NotFound,
                 other => {
-                    tracing::error!("S3 get_object failed: {:?}", other);
+                    warn_s3_failure("get_object", &other);
                     StorageError::OperationFailed
                 }
             })?;
 
+        let content_length = result.content_length().and_then(|n| u64::try_from(n).ok());
         // Direct streaming - no buffering
-        Ok(Box::new(result.body.into_async_read()))
+        Ok(Retrieved {
+            reader: Box::new(result.body.into_async_read()),
+            content_length,
+        })
     }
+}
+
+/// WARN, not ERROR: the request line is the one ERROR per failed request.
+fn warn_s3_failure<E>(operation: &'static str, error: &E)
+where
+    E: std::error::Error + ProvideErrorMetadata,
+{
+    tracing::warn!(
+        operation,
+        error = %error_chain(error),
+        code = error.code(),
+        "S3 request failed"
+    );
+}
+
+/// Each source's message, joined with ": ". `ErrorMetadata` displays as a
+/// struct, so only its message is kept.
+fn error_chain(error: &dyn std::error::Error) -> String {
+    let mut chain = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        if let Some(meta) = cause.downcast_ref::<ErrorMetadata>() {
+            if let Some(message) = meta.message() {
+                chain.push_str(": ");
+                chain.push_str(message);
+            }
+            break;
+        }
+        chain.push_str(": ");
+        chain.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    chain
 }
