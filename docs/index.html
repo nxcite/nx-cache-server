@@ -237,7 +237,9 @@ export S3_ENDPOINT_URL="your-s3-endpoint-url"   # For S3-compatible services lik
 export S3_TIMEOUT="30"                          # S3 operation timeout in seconds (default: 30)
 export PORT="3000"                              # Server port (default: 3000)
 export BIND_ADDRESS="0.0.0.0"                   # IP to bind to (default: 0.0.0.0). Use "::" for IPv6/dual-stack
-export READ_ONLY_ACCESS_TOKEN="your-ro-token"   # Read-only token for untrusted CI jobs (e.g. PR builds) — protects against cache poisoning (CVE-2025-36852 / CREEP)</code>
+export READ_ONLY_ACCESS_TOKEN="your-ro-token"   # Read-only token for untrusted CI jobs (e.g. PR builds) — protects against cache poisoning (CVE-2025-36852 / CREEP)
+export LOG_FORMAT="text"                        # Log format: text or json (default: text). See "Logging"
+export DEBUG="false"                            # Debug logs for this server (default: false). See "Logging"</code>
                                 </div>
                             </div>
 
@@ -328,6 +330,76 @@ export NODE_TLS_REJECT_UNAUTHORIZED="0"</code>
                     </div>
                     <p class="text-gray-600 mt-4">Once configured, Nx will automatically use your cache server for storing and retrieving build artifacts.</p>
                     <p class="text-gray-600 mt-2">For more details, see the <a href="https://nx.dev/recipes/running-tasks/self-hosted-caching#usage-notes" class="text-blue-600 hover:underline">Nx documentation</a>.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Logging Section -->
+    <section class="py-16">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4">Logging</h2>
+                <p class="text-lg text-gray-600">The server logs to stdout, one line per request (routine requests at <code>debug</code>)</p>
+            </div>
+            <div class="max-w-3xl mx-auto">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
+                        <code class="text-sm text-gray-800 block whitespace-pre">export LOG_FORMAT="json"   # text (default) or json
+export RUST_LOG="info"     # e.g. "warn" or "info,nx_cache_server=debug"
+export DEBUG="true"        # debug logs for this server; ignored when RUST_LOG is set</code>
+                    </div>
+                    <ul class="list-disc pl-6 text-gray-600 mt-4 space-y-2">
+                        <li><code>RUST_LOG</code> is a comma-separated list of <code>level</code> or <code>target=level</code> entries. Full <code>env_filter</code> syntax (span filters, regexes) is not supported. Unset or empty means <code>info</code>, or the <code>DEBUG</code> filter when <code>DEBUG</code> is set. An invalid value stops the server at startup.</li>
+                        <li>A level below <code>info</code> for this server (e.g. <code>RUST_LOG=warn</code>) also hides the <code>Server running on</code> line. An unknown word is read as a target name, so a typo like <code>RUST_LOG=warning</code> silences all output.</li>
+                        <li><code>DEBUG=true</code> (also <code>1</code>, <code>yes</code>, <code>on</code>) logs this server at <code>debug</code> and everything else at <code>info</code>. If <code>RUST_LOG</code> is also set, <code>RUST_LOG</code> wins and the server logs a warning.</li>
+                        <li>Tokens, the <code>Authorization</code> header and request bodies are never logged.</li>
+                    </ul>
+
+                    <h3 class="text-xl font-semibold mt-8 mb-4">Request line</h3>
+                    <p class="text-gray-600 mb-4">Each request logs a line with the message <code>request</code> and these fields:</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-gray-700">
+                            <thead><tr><th class="py-2 pr-4">Field</th><th class="py-2">Meaning</th></tr></thead>
+                            <tbody>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>method</code></td><td class="py-2">HTTP method</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>hash</code></td><td class="py-2">Cache hash; omitted when missing or invalid</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>status</code></td><td class="py-2">Response status</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>outcome</code></td><td class="py-2">What happened (see below)</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>access</code></td><td class="py-2"><code>read_write</code>, <code>read_only</code>, or <code>none</code> (no valid token)</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>bytes</code></td><td class="py-2">Size of the artifact stored or retrieved; <code>0</code> otherwise</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>duration_ms</code></td><td class="py-2">Time until the response headers are sent. It excludes streaming a download's body</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="overflow-x-auto mt-6">
+                        <table class="w-full text-sm text-left text-gray-700">
+                            <thead><tr><th class="py-2 pr-4"><code>outcome</code></th><th class="py-2">Meaning</th></tr></thead>
+                            <tbody>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>hit</code></td><td class="py-2">Artifact found (200)</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>miss</code></td><td class="py-2">Artifact not found (404)</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>stored</code></td><td class="py-2">Artifact uploaded (200)</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>exists</code></td><td class="py-2">Upload refused, hash already stored (409)</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>forbidden</code></td><td class="py-2">Read-only token tried to upload (403)</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>unauthorized</code></td><td class="py-2">Missing or unknown token (401)</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>invalid</code></td><td class="py-2">Bad hash, unknown route or aborted upload (4xx)</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>error</code></td><td class="py-2">Storage failure (5xx)</td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>health</code></td><td class="py-2"><code>GET /health</code></td></tr>
+                            <tr class="border-t"><td class="py-2 pr-4"><code>aborted</code></td><td class="py-2">Client disconnected before the response; no <code>status</code></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-gray-600 mt-6">Each request line's level depends on its outcome: <code>error</code> for storage failures, <code>warn</code> for <code>unauthorized</code> and <code>invalid</code>, <code>info</code> for <code>aborted</code>, and <code>debug</code> for routine traffic (<code>hit</code>, <code>miss</code>, <code>stored</code>, <code>exists</code>, <code>forbidden</code>, <code>health</code>). Set <code>DEBUG=true</code> to log every request. A storage failure also logs an S3 <code>warn</code> line with <code>operation</code>, <code>error</code> and <code>code</code>, tagged with the request's hash.</p>
+
+                    <h3 class="text-xl font-semibold mt-8 mb-4">Examples</h3>
+                    <p class="text-gray-600 mb-2">Text format:</p>
+                    <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
+                        <code class="text-sm text-gray-800 block whitespace-pre">2026-10-21T01:47:50.548812Z DEBUG nx_cache_server::server::logging: request method=GET hash="14cdc9c4a8af4987cce2" status=200 outcome="hit" access="read_only" bytes=1048576 duration_ms=5</code>
+                    </div>
+                    <p class="text-gray-600 mt-4 mb-2">JSON format:</p>
+                    <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
+                        <code class="text-sm text-gray-800 block whitespace-pre">{"timestamp":"2026-10-21T01:47:51.163412Z","level":"DEBUG","message":"request","method":"GET","hash":"932ad3fd6176a673686b","status":200,"outcome":"hit","access":"read_only","bytes":1048576,"duration_ms":2,"target":"nx_cache_server::server::logging"}</code>
+                    </div>
                 </div>
             </div>
         </div>
