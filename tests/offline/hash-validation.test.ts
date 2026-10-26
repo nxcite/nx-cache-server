@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { artifact } from "../support/artifacts.ts";
 import { MAX_HASH_LENGTH } from "../support/client.ts";
+import { IN_FLIGHT_UPLOAD_LENGTH, KeepAliveConnection } from "../support/keep-alive-connection.ts";
 import { startServer } from "../support/nx-cache-aws.ts";
 import { VALID_ENV } from "../support/server-env.ts";
 
@@ -22,4 +23,17 @@ test("invalid hashes are rejected with 400", async () => {
         expect(read.status, `GET with ${label}`).toBe(400);
         expect(write.status, `PUT with ${label}`).toBe(400);
     }
+});
+
+test("an upload with an invalid hash is received in full, then refused with 400", async () => {
+    const server = await startServer(VALID_ENV);
+    const connection = new KeepAliveConnection(server.port);
+
+    const upload = await connection.putStreaming(
+        INVALID_HASHES.dot,
+        "read-write",
+        IN_FLIGHT_UPLOAD_LENGTH,
+    );
+
+    expect(upload.status).toBe(400);
 });
