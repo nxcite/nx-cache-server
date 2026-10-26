@@ -12,9 +12,9 @@ pub async fn store_artifact<T: StorageProvider>(
     State(state): State<AppState<T>>,
     body: Body,
 ) -> Result<impl IntoResponse, ServerError> {
-    // Every early return below drains first, for the reason given on the 403 in
-    // auth_middleware: an unread body reaches an uploading client as a write
-    // error instead of the status.
+    // Every refusal before the body is read drains it first, for the reason given
+    // on the 403 in auth_middleware: an unread body reaches an uploading client as
+    // a write error instead of the status.
     if let Err(invalid) = validation::validate_hash(&hash) {
         crate::server::drain_body(body).await;
         return Err(invalid);

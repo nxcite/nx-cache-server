@@ -44,6 +44,7 @@ where
         .is_some_and(|read_only| bool::from(token.as_bytes().ct_eq(read_only.as_bytes())));
 
     if !is_read_write && !is_read_only {
+        // No drain: we don't read uploads from callers we can't identify.
         return Err(ServerError::Unauthorized);
     }
 
@@ -51,7 +52,7 @@ where
     // token. This lets untrusted CI jobs (e.g. PR builds) use the cache
     // without being able to poison it (CVE-2025-36852 / CREEP). HEAD is a read
     // and axum routes it to the GET handler, so it belongs on this side of the
-    // line. The check stays an allowlist, so a method added later fails closed.
+    // line. It is an allowlist, so a method added later fails closed.
     let method = request.method();
     let is_read = method == Method::GET || method == Method::HEAD;
     if !is_read_write && !is_read {
