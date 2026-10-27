@@ -12,6 +12,8 @@ use aws_sdk_s3::config::SharedHttpClient;
 use aws_sdk_s3::config::{Credentials, ProvideCredentials};
 use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::operation::head_object::HeadObjectError;
+use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use aws_sdk_s3::{config::Region, Client, Config as S3Config};
 use aws_smithy_http_client::tls::rustls_provider::CryptoMode;
 use aws_smithy_http_client::{tls, Builder as HttpClientBuilder};
@@ -214,6 +216,26 @@ impl S3Storage {
     }
 }
 
+/// Bodies up to this size go up in one PutObject, larger ones as a multipart
+/// upload of parts this size, so an upload never holds more than one part in
+/// memory. S3 requires every part but the last to be at least 5 MiB.
+const PART_SIZE: usize = 8 * 1024 * 1024;
+
+/// Reads up to `PART_SIZE` bytes, returning them and whether the body ended.
+async fn fill_part<R: AsyncRead + Send + Unpin>(
+    data: &mut ReaderStream<R>,
+) -> Result<(Vec<u8>, bool), StorageError> {
+    let mut part = Vec::with_capacity(PART_SIZE);
+    while part.len() < PART_SIZE {
+        match data.next().await {
+            Some(Ok(chunk)) => part.extend_from_slice(&chunk),
+            Some(Err(_)) => return Err(StorageError::ClientAbort),
+            None => return Ok((part, true)),
+        }
+    }
+    Ok((part, false))
+}
+
 #[async_trait]
 impl StorageProvider for S3Storage {
     async fn exists(&self, hash: &str) -> Result<bool, StorageError> {
@@ -245,25 +267,109 @@ impl StorageProvider for S3Storage {
             return Err(StorageError::AlreadyExists);
         }
 
-        // For simplicity, read all data into memory first
-        // TODO: Implement true streaming for better memory efficiency
-        let mut buffer = Vec::new();
-        while let Some(chunk) = data.next().await {
-            let chunk = chunk.map_err(|_| StorageError::OperationFailed)?;
-            buffer.extend_from_slice(&chunk);
+        let (mut part, mut eof) = fill_part(&mut data).await?;
+
+        if eof {
+            return self
+                .client
+                .put_object()
+                .bucket(&self.bucket_name)
+                .key(hash)
+                .body(ByteStream::from(part))
+                .send()
+                .await
+                .map(|_| ())
+                .map_err(|e| {
+                    tracing::error!("S3 put_object failed: {:?}", e);
+                    StorageError::OperationFailed
+                });
         }
 
-        let body = aws_sdk_s3::primitives::ByteStream::from(buffer);
-
-        self.client
-            .put_object()
+        let upload_id = self
+            .client
+            .create_multipart_upload()
             .bucket(&self.bucket_name)
             .key(hash)
-            .body(body)
             .send()
             .await
             .map_err(|e| {
-                tracing::error!("S3 put_object failed: {:?}", e);
+                tracing::error!("S3 create_multipart_upload failed: {:?}", e);
+                StorageError::OperationFailed
+            })?
+            .upload_id
+            .ok_or_else(|| {
+                tracing::error!("S3 create_multipart_upload returned no upload id");
+                StorageError::OperationFailed
+            })?;
+
+        let mut completed = Vec::new();
+        let uploaded: Result<(), StorageError> = async {
+            loop {
+                // A body that is an exact multiple of the part size ends with
+                // an empty read, which is not a part.
+                if !part.is_empty() {
+                    let part_number = completed.len() as i32 + 1;
+                    let e_tag = self
+                        .client
+                        .upload_part()
+                        .bucket(&self.bucket_name)
+                        .key(hash)
+                        .upload_id(&upload_id)
+                        .part_number(part_number)
+                        .body(ByteStream::from(std::mem::take(&mut part)))
+                        .send()
+                        .await
+                        .map_err(|e| {
+                            tracing::error!("S3 upload_part failed: {:?}", e);
+                            StorageError::OperationFailed
+                        })?
+                        .e_tag;
+                    completed.push(
+                        CompletedPart::builder()
+                            .part_number(part_number)
+                            .set_e_tag(e_tag)
+                            .build(),
+                    );
+                }
+                if eof {
+                    return Ok(());
+                }
+                (part, eof) = fill_part(&mut data).await?;
+            }
+        }
+        .await;
+
+        if let Err(err) = uploaded {
+            // Parts of an upload that is neither completed nor aborted stay
+            // billed in the bucket, invisible to ListObjects.
+            if let Err(e) = self
+                .client
+                .abort_multipart_upload()
+                .bucket(&self.bucket_name)
+                .key(hash)
+                .upload_id(&upload_id)
+                .send()
+                .await
+            {
+                tracing::error!("S3 abort_multipart_upload failed: {:?}", e);
+            }
+            return Err(err);
+        }
+
+        self.client
+            .complete_multipart_upload()
+            .bucket(&self.bucket_name)
+            .key(hash)
+            .upload_id(&upload_id)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .set_parts(Some(completed))
+                    .build(),
+            )
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("S3 complete_multipart_upload failed: {:?}", e);
                 StorageError::OperationFailed
             })?;
 

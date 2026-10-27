@@ -6,6 +6,7 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
+use tokio_stream::StreamExt;
 
 pub async fn store_artifact<T: StorageProvider>(
     Path(hash): Path<String>,
@@ -35,16 +36,25 @@ pub async fn store_artifact<T: StorageProvider>(
         return Ok((StatusCode::CONFLICT, "Cannot override an existing record"));
     }
 
-    // For now, let's use a simpler approach - collect the body into bytes
-    // TODO: Implement true streaming later for better memory efficiency
-    let bytes = axum::body::to_bytes(body, usize::MAX)
-        .await
-        .map_err(|_| ServerError::BadRequest)?;
+    let body_stream = body
+        .into_data_stream()
+        .map(|chunk| chunk.map_err(std::io::Error::other));
+    let mut reader = tokio_util::io::StreamReader::new(body_stream);
 
-    let cursor = std::io::Cursor::new(bytes);
-    let reader_stream = tokio_util::io::ReaderStream::new(cursor);
-
-    state.storage.store(&hash, reader_stream).await?;
+    // Lent, not moved: if storage fails part-way, the rest of the upload is
+    // still here to drain.
+    let stored = state
+        .storage
+        .store(&hash, tokio_util::io::ReaderStream::new(&mut reader))
+        .await;
+    if stored.is_err() {
+        let _ = tokio::time::timeout(
+            crate::server::DRAIN_TIMEOUT,
+            tokio::io::copy(&mut reader, &mut tokio::io::sink()),
+        )
+        .await;
+    }
+    stored?;
 
     Ok((StatusCode::OK, ""))
 }
