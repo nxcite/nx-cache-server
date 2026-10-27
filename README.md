@@ -142,6 +142,23 @@ export READ_ONLY_ACCESS_TOKEN="your-ro-token"   # untrusted builds (PRs): read-o
 
 Then set `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` to the read-only token in PR pipelines and to the read-write token only in trusted-branch pipelines. A read-only token can retrieve artifacts as usual but gets `403 Forbidden` on writes, so untrusted jobs still benefit from cache hits without being able to poison the cache.
 
+### Large artifacts and S3 permissions
+
+Uploads are streamed to S3 in 8 MiB parts: anything larger than one part goes up as a multipart upload, so the server holds at most one part per upload in memory. A failed multipart upload is aborted, which needs `s3:AbortMultipartUpload` next to `s3:PutObject`. If the server is killed mid-upload or the abort fails, the parts stay in the bucket and are billed until something removes them; a lifecycle rule does that:
+
+```json
+{
+  "Rules": [
+    {
+      "ID": "abort-incomplete-multipart-uploads",
+      "Status": "Enabled",
+      "Filter": {},
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 1 }
+    }
+  ]
+}
+```
+
 ---
 
 ### Stay Updated. Watch this repository to get notified about new releases!
