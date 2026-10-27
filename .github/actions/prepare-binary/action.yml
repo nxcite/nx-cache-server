@@ -3,7 +3,7 @@ description: 'Copy built binary to artifacts and upload with validation'
 
 inputs:
   target:
-    description: 'Target architecture (e.g., x86_64-unknown-linux-gnu)'
+    description: 'Target architecture (e.g., x86_64-unknown-linux-musl)'
     required: true
   binary-name:
     description: 'Name of the binary to prepare (e.g., nx-cache-aws)'
