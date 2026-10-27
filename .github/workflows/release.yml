@@ -105,3 +105,16 @@ jobs:
           version: ${{ needs.validate.outputs.version }}
           release-notes: ${{ github.event.inputs.release_notes }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # The container image is published from here rather than from a `push: tags:`
+  # trigger on docker.yml: the tag above is created with GITHUB_TOKEN, and
+  # events raised by GITHUB_TOKEN do not start new workflow runs.
+  image:
+    name: Build and Push Image
+    needs: [validate, create-tag-and-release]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/docker.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}
