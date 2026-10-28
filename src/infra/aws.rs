@@ -34,6 +34,9 @@ use crate::domain::{
 fn https_client() -> SharedHttpClient {
     HttpClientBuilder::new()
         .tls_provider(tls::Provider::Rustls(CryptoMode::Ring))
+        // S3 closes idle keep-alive connections after ~20s; hyper's default of
+        // 90s hands those dead sockets to the next request (IncompleteMessage).
+        .pool_idle_timeout(std::time::Duration::from_secs(15))
         .build_https()
 }
 
