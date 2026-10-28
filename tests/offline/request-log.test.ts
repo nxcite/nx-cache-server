@@ -96,12 +96,20 @@ test("a percent-encoded hash is logged decoded", async () => {
     expect(line.hash).toBe("abc-été");
 });
 
-test("an unknown route logs invalid", async () => {
-    const line = await onlyRequestLine(JSON_ENV, (server) =>
+test("an unknown route logs unmatched at debug", async () => {
+    const line = await onlyRequestLine(withVariables(JSON_ENV, { DEBUG: "true" }), (server) =>
         server.client("none").request("GET", "/nope"),
     );
 
-    expect(line).toMatchObject({ status: 404, outcome: "invalid" });
+    expect(line).toMatchObject({ status: 404, outcome: "unmatched", level: "DEBUG" });
+});
+
+test("a wrong method on a known route logs unmatched at debug", async () => {
+    const line = await onlyRequestLine(withVariables(JSON_ENV, { DEBUG: "true" }), (server) =>
+        server.client("none").request("POST", "/health"),
+    );
+
+    expect(line).toMatchObject({ status: 405, outcome: "unmatched", level: "DEBUG" });
 });
 
 test("health checks are logged only at debug", async () => {

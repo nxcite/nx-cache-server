@@ -42,9 +42,10 @@ pub async fn store_artifact<T: StorageProvider>(
 
     // For now, let's use a simpler approach - collect the body into bytes
     // TODO: Implement true streaming later for better memory efficiency
-    let bytes = axum::body::to_bytes(body, usize::MAX)
-        .await
-        .map_err(|_| ServerError::BadRequest)?;
+    let bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|_| {
+        record.set_outcome(Outcome::Aborted);
+        ServerError::BadRequest
+    })?;
 
     let length = bytes.len() as u64;
     let cursor = std::io::Cursor::new(bytes);

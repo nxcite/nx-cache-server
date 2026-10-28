@@ -39,6 +39,7 @@ pub enum Outcome {
     Error,
     Health,
     Aborted,
+    Unmatched,
 }
 
 impl Outcome {
@@ -54,12 +55,16 @@ impl Outcome {
             Outcome::Error => "error",
             Outcome::Health => "health",
             Outcome::Aborted => "aborted",
+            Outcome::Unmatched => "unmatched",
         }
     }
 
     /// Fallback when nothing recorded an outcome, e.g. axum rejections.
-    fn from_status(status: StatusCode) -> Self {
+    fn from_status(status: StatusCode, has_hash: bool) -> Self {
         match status {
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED if !has_hash => {
+                Outcome::Unmatched
+            }
             StatusCode::UNAUTHORIZED => Outcome::Unauthorized,
             StatusCode::FORBIDDEN => Outcome::Forbidden,
             StatusCode::CONFLICT => Outcome::Exists,
@@ -143,7 +148,7 @@ impl Drop for RequestLine {
             None => Outcome::Aborted,
             Some(status) => fields
                 .outcome
-                .unwrap_or_else(|| Outcome::from_status(status)),
+                .unwrap_or_else(|| Outcome::from_status(status, fields.hash.is_some())),
         };
         let access = fields.access.as_str();
         let hash = fields.hash.as_deref();

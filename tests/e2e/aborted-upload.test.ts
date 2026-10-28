@@ -33,6 +33,7 @@ test("an upload cut short stores nothing and can be retried", async () => {
     expect(requestLines(stdout)[0]).toMatchObject({
         method: "PUT",
         status: 400,
-        outcome: "invalid",
+        outcome: "aborted",
+        level: "INFO",
     });
 });
