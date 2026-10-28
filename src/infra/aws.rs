@@ -34,8 +34,9 @@ use crate::domain::{
 fn https_client() -> SharedHttpClient {
     HttpClientBuilder::new()
         .tls_provider(tls::Provider::Rustls(CryptoMode::Ring))
-        // S3 closes idle keep-alive connections after ~20s; hyper's default of
-        // 90s hands those dead sockets to the next request (IncompleteMessage).
+        // Pooled connections idle for less than hyper's 90 s default were found dead
+        // on networks outside AWS, and requests on them failed with IncompleteMessage.
+        // Drop idle connections well before that.
         .pool_idle_timeout(std::time::Duration::from_secs(15))
         .build_https()
 }
