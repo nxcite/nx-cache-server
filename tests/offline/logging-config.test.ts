@@ -2,10 +2,13 @@ import { expect, test } from "vitest";
 import { expectExit } from "../support/assertions.ts";
 import { jsonLines } from "../support/logs.ts";
 import {
+    BIND_FAILURE_MESSAGE,
+    ERROR_LOG_LEVEL,
     STARTUP_FAILURE_EXIT_CODE,
     runServerUntilExit,
     startServer,
 } from "../support/nx-cache-aws.ts";
+import { holdPort } from "../support/ports.ts";
 import { VALID_ENV, withVariables } from "../support/server-env.ts";
 
 const CLAP_USAGE_EXIT_CODE = 2;
@@ -80,4 +83,31 @@ test("DEBUG=false with RUST_LOG set does not warn", async () => {
         (line) => line.level === "WARN" && line.message?.includes(DEBUG_IGNORED_WARNING),
     );
     expect(warnings).toEqual([]);
+});
+
+test("in JSON mode a config error is also logged", async () => {
+    const exited = await runServerUntilExit(
+        withVariables(VALID_ENV, { SERVICE_ACCESS_TOKEN: "", LOG_FORMAT: "json" }),
+    );
+
+    expectExit(exited, STARTUP_FAILURE_EXIT_CODE);
+    expect(exited.stderr).toContain("Service access token is required");
+    expect(jsonLines(exited.stdout)).toContainEqual(
+        expect.objectContaining({
+            level: "ERROR",
+            error: expect.stringContaining("Service access token is required"),
+        }),
+    );
+});
+
+test("in text mode a startup failure is printed only to stderr", async () => {
+    await using takenPort = await holdPort();
+
+    const exited = await runServerUntilExit(
+        withVariables(VALID_ENV, { PORT: String(takenPort.port) }),
+    );
+
+    expectExit(exited, STARTUP_FAILURE_EXIT_CODE);
+    expect(exited.stderr).toContain(BIND_FAILURE_MESSAGE);
+    expect(exited.stdout).not.toContain(ERROR_LOG_LEVEL);
 });
