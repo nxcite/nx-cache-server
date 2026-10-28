@@ -158,6 +158,7 @@ export DEBUG="true"        # debug logs for this server; ignored when RUST_LOG i
 - A level below `info` for this server (e.g. `RUST_LOG=warn`) also hides the `Server running on` line. An unknown word is read as a target name, so a typo like `RUST_LOG=warning` silences all output.
 - `DEBUG=true` (also `1`, `yes`, `on`) logs this server at `debug` and everything else at `info`. If `RUST_LOG` is also set, `RUST_LOG` wins and the server logs a warning.
 - Tokens, the `Authorization` header and request bodies are never logged.
+- Startup failures print to stderr. With `LOG_FORMAT=json` they are also logged as an `error` line.
 
 Each request logs a line with the message `request` and these fields:
 
@@ -169,7 +170,7 @@ Each request logs a line with the message `request` and these fields:
 | `outcome` | What happened (see below) |
 | `access` | `read_write`, `read_only`, or `none` (no valid token) |
 | `bytes` | Size of the artifact stored or retrieved; `0` otherwise |
-| `duration_ms` | Time until the response headers are sent. It excludes streaming a download's body |
+| `duration_ms` | Time until the response headers are sent. A download streams afterwards, so for GET this is roughly S3's time to first byte; for PUT it includes the full upload |
 
 | `outcome` | Meaning |
 |---|---|
@@ -179,12 +180,13 @@ Each request logs a line with the message `request` and these fields:
 | `exists` | Upload refused, hash already stored (409) |
 | `forbidden` | Read-only token tried to upload (403) |
 | `unauthorized` | Missing or unknown token (401) |
-| `invalid` | Bad hash, unknown route or aborted upload (4xx) |
+| `invalid` | Bad hash or other rejected request (4xx) |
+| `unmatched` | No route for the path or method (404, 405) |
 | `error` | Storage failure (5xx) |
 | `health` | `GET /health` |
-| `aborted` | Client disconnected before the response; no `status` |
+| `aborted` | Client disconnected before the response (no `status`), or the upload broke off (400) |
 
-Each request line's level depends on its outcome: `error` for storage failures, `warn` for `unauthorized` and `invalid`, `info` for `aborted`, and `debug` for routine traffic (`hit`, `miss`, `stored`, `exists`, `forbidden`, `health`). Set `DEBUG=true` to log every request. A storage failure also logs an S3 `warn` line with `operation`, `error` and `code`, tagged with the request's hash.
+Each request line's level depends on its outcome: `error` for storage failures, `warn` for `unauthorized` and `invalid`, `info` for `aborted`, and `debug` for routine traffic (`hit`, `miss`, `stored`, `exists`, `forbidden`, `health`, `unmatched`). Set `DEBUG=true` to log every request. A storage failure also logs an S3 `warn` line with `operation`, `error` and `code`, tagged with the request's hash.
 
 Text format:
 ```
