@@ -340,7 +340,7 @@ export NODE_TLS_REJECT_UNAUTHORIZED="0"</code>
         <div class="container mx-auto px-6">
             <div class="text-center mb-12">
                 <h2 class="text-3xl md:text-4xl font-bold mb-4">Logging</h2>
-                <p class="text-lg text-gray-600">The server logs to stdout, one line per request (routine requests at <code>debug</code>)</p>
+                <p class="text-lg text-gray-600">The server logs to stdout, one line per request (health checks and other noise at <code>debug</code>)</p>
             </div>
             <div class="max-w-3xl mx-auto">
                 <div class="bg-white p-6 rounded-lg shadow-md">
@@ -391,16 +391,16 @@ export DEBUG="true"        # debug logs for this server; ignored when RUST_LOG i
                             </tbody>
                         </table>
                     </div>
-                    <p class="text-gray-600 mt-6">Each request line's level depends on its outcome: <code>error</code> for storage failures, <code>warn</code> for <code>unauthorized</code> and <code>invalid</code>, <code>info</code> for <code>aborted</code>, and <code>debug</code> for routine traffic (<code>hit</code>, <code>miss</code>, <code>stored</code>, <code>exists</code>, <code>forbidden</code>, <code>health</code>, <code>unmatched</code>). Set <code>DEBUG=true</code> to log every request. A storage failure also logs an S3 <code>warn</code> line with <code>operation</code>, <code>error</code> and <code>code</code>, tagged with the request's hash.</p>
+                    <p class="text-gray-600 mt-6">Each request line's level depends on its outcome: <code>error</code> for storage failures, <code>warn</code> for <code>unauthorized</code> and <code>invalid</code>, <code>info</code> for <code>hit</code>, <code>miss</code>, <code>stored</code> and <code>aborted</code>, and <code>debug</code> for <code>exists</code>, <code>forbidden</code>, <code>health</code> and <code>unmatched</code>. Set <code>DEBUG=true</code> to log every request. A storage failure also logs an S3 <code>warn</code> line with <code>operation</code>, <code>error</code> and <code>code</code>, tagged with the request's hash.</p>
 
                     <h3 class="text-xl font-semibold mt-8 mb-4">Examples</h3>
                     <p class="text-gray-600 mb-2">Text format:</p>
                     <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
-                        <code class="text-sm text-gray-800 block whitespace-pre">2026-10-21T01:47:50.548812Z DEBUG nx_cache_server::server::logging: request method=GET hash="14cdc9c4a8af4987cce2" status=200 outcome="hit" access="read_only" bytes=1048576 duration_ms=5</code>
+                        <code class="text-sm text-gray-800 block whitespace-pre">2026-10-21T01:47:50.548812Z  INFO nx_cache_server::server::logging: request method=GET hash="14cdc9c4a8af4987cce2" status=200 outcome="hit" access="read_only" bytes=1048576 duration_ms=5</code>
                     </div>
                     <p class="text-gray-600 mt-4 mb-2">JSON format:</p>
                     <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto">
-                        <code class="text-sm text-gray-800 block whitespace-pre">{"timestamp":"2026-10-21T01:47:51.163412Z","level":"DEBUG","message":"request","method":"GET","hash":"932ad3fd6176a673686b","status":200,"outcome":"hit","access":"read_only","bytes":1048576,"duration_ms":2,"target":"nx_cache_server::server::logging"}</code>
+                        <code class="text-sm text-gray-800 block whitespace-pre">{"timestamp":"2026-10-21T01:47:51.163412Z","level":"INFO","message":"request","method":"GET","hash":"932ad3fd6176a673686b","status":200,"outcome":"hit","access":"read_only","bytes":1048576,"duration_ms":2,"target":"nx_cache_server::server::logging"}</code>
                     </div>
                 </div>
             </div>

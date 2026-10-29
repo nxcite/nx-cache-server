@@ -173,12 +173,15 @@ impl Drop for RequestLine {
             };
         }
 
-        // Routine traffic stays at DEBUG so the default level shows only what needs attention.
+        // Cache traffic at INFO shows hit rate by default; noise stays at DEBUG.
         if status.is_some_and(|s| s.is_server_error()) {
             request_event!(Level::ERROR);
         } else if matches!(outcome, Outcome::Unauthorized | Outcome::Invalid) {
             request_event!(Level::WARN);
-        } else if outcome == Outcome::Aborted {
+        } else if matches!(
+            outcome,
+            Outcome::Hit | Outcome::Miss | Outcome::Stored | Outcome::Aborted
+        ) {
             request_event!(Level::INFO);
         } else {
             request_event!(Level::DEBUG);

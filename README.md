@@ -146,7 +146,7 @@ Then set `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` to the read-only token in PR
 
 ### Logging
 
-The server logs to stdout, one line per request (routine requests at `debug`).
+The server logs to stdout, one line per request (health checks and other noise at `debug`).
 
 ```bash
 export LOG_FORMAT="json"   # text (default) or json
@@ -186,16 +186,16 @@ Each request logs a line with the message `request` and these fields:
 | `health` | `GET /health` |
 | `aborted` | Client disconnected before the response (no `status`), or the upload broke off (400) |
 
-Each request line's level depends on its outcome: `error` for storage failures, `warn` for `unauthorized` and `invalid`, `info` for `aborted`, and `debug` for routine traffic (`hit`, `miss`, `stored`, `exists`, `forbidden`, `health`, `unmatched`). Set `DEBUG=true` to log every request. A storage failure also logs an S3 `warn` line with `operation`, `error` and `code`, tagged with the request's hash.
+Each request line's level depends on its outcome: `error` for storage failures, `warn` for `unauthorized` and `invalid`, `info` for `hit`, `miss`, `stored` and `aborted`, and `debug` for `exists`, `forbidden`, `health` and `unmatched`. Set `DEBUG=true` to log every request. A storage failure also logs an S3 `warn` line with `operation`, `error` and `code`, tagged with the request's hash.
 
 Text format:
 ```
-2026-10-21T01:47:50.548812Z DEBUG nx_cache_server::server::logging: request method=GET hash="14cdc9c4a8af4987cce2" status=200 outcome="hit" access="read_only" bytes=1048576 duration_ms=5
+2026-10-21T01:47:50.548812Z  INFO nx_cache_server::server::logging: request method=GET hash="14cdc9c4a8af4987cce2" status=200 outcome="hit" access="read_only" bytes=1048576 duration_ms=5
 ```
 
 JSON format:
 ```json
-{"timestamp":"2026-10-21T01:47:51.163412Z","level":"DEBUG","message":"request","method":"GET","hash":"932ad3fd6176a673686b","status":200,"outcome":"hit","access":"read_only","bytes":1048576,"duration_ms":2,"target":"nx_cache_server::server::logging"}
+{"timestamp":"2026-10-21T01:47:51.163412Z","level":"INFO","message":"request","method":"GET","hash":"932ad3fd6176a673686b","status":200,"outcome":"hit","access":"read_only","bytes":1048576,"duration_ms":2,"target":"nx_cache_server::server::logging"}
 ```
 
 ---
@@ -205,5 +205,3 @@ JSON format:
 <img width="369" height="387" alt="image" src="https://github.com/user-attachments/assets/97c4ebab-75a1-4f83-bc52-cf4ebbc73bfa" />
 
 <img width="465" height="366" alt="image" src="https://github.com/user-attachments/assets/512af549-0e9a-40ac-95bd-f9eea0da38a7" />
-
-
