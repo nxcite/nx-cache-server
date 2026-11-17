@@ -1,0 +1,84 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint and typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      # stable, not a pinned version: the locked AWS crates need Rust >= 1.94.1.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Cargo.lock must not contain aws-lc
+        run: |
+          if grep -qE '^name = "aws-lc-(sys|rs|fips-sys)"' Cargo.lock; then
+            echo "aws-lc found in Cargo.lock"; exit 1
+          fi
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: tests/package.json
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - run: npm --prefix tests ci
+      - run: npm --prefix tests run format:check
+      - run: npm --prefix tests run lint
+      - run: npm --prefix tests run typecheck
+
+  offline-tests:
+    name: Offline tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked --bin nx-cache-aws
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: tests/package.json
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - run: npm --prefix tests ci
+      - run: npm --prefix tests run test:offline
+
+  e2e-tests:
+    name: E2E tests
+    # Windows runners can't run Linux containers.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --locked --bin nx-cache-aws
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: tests/package.json
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - run: npm --prefix tests ci
+      - run: npm --prefix tests run test:e2e
