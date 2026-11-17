@@ -41,15 +41,17 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          # musl, statically linked: a -gnu build needs the build runner's
-          # glibc or newer, so ubuntu-latest's broke on Ubuntu 22.04
-          # (nxcite/nx-cache-server#7).
-          - target: x86_64-unknown-linux-musl
+          # Linked against glibc 2.17 via cargo-zigbuild: a plain cargo build
+          # needs the runner's glibc or newer, so ubuntu-latest's broke on
+          # Ubuntu 22.04 (nxcite/nx-cache-server#7).
+          - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+            glibc: '2.17'
             name: nx-cache-aws-${{ needs.validate.outputs.version }}-linux-x86_64
 
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-24.04-arm
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            glibc: '2.17'
             name: nx-cache-aws-${{ needs.validate.outputs.version }}-linux-arm64
 
           - target: x86_64-apple-darwin
@@ -78,17 +80,19 @@ jobs:
       - name: Add Rust target
         run: rustup target add ${{ matrix.target }}
 
-      # ring compiles C, and the musl targets need musl-gcc for it.
-      - name: Install musl-gcc
-        if: endsWith(matrix.target, '-musl')
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Install Zig and cargo-zigbuild
+        if: matrix.glibc
+        run: |
+          pip3 install --break-system-packages ziglang==0.17.1
+          cargo install --locked cargo-zigbuild@0.24.1
 
       - name: Build release binary
-        # cc-rs looks for aarch64-linux-musl-gcc, which musl-tools doesn't ship.
-        env:
-          CC_aarch64_unknown_linux_musl: musl-gcc
-        run: |
-          cargo build --release --bin nx-cache-aws --target ${{ matrix.target }}
+        if: ${{ !matrix.glibc }}
+        run: cargo build --release --locked --bin nx-cache-aws --target ${{ matrix.target }}
+
+      - name: Build release binary (glibc ${{ matrix.glibc }})
+        if: matrix.glibc
+        run: cargo zigbuild --release --locked --bin nx-cache-aws --target ${{ matrix.target }}.${{ matrix.glibc }}
 
       - name: Prepare binary for release
         uses: ./.github/actions/prepare-binary

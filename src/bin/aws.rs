@@ -3,12 +3,6 @@ use nx_cache_server::domain::config::{ConfigValidator, ServerConfig};
 use nx_cache_server::infra::aws::{AwsStorageConfig, S3Storage};
 use nx_cache_server::server::run_server;
 
-// musl's malloc serializes under contention and roughly halved GET throughput
-// (nxcite/nx-cache-server#29), so the static Linux builds use mimalloc.
-#[cfg(target_env = "musl")]
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-
 #[derive(Parser)]
 #[command(name = "nx-cache-aws")]
 #[command(about = "Nx Remote Cache Server - AWS S3 Backend")]
