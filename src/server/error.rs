@@ -33,6 +33,9 @@ impl IntoResponse for ServerError {
             ServerError::Storage(StorageError::AlreadyExists) => {
                 (StatusCode::CONFLICT, "Cannot override an existing record")
             }
+            ServerError::Storage(StorageError::ClientAbort) => {
+                (StatusCode::BAD_REQUEST, "Bad request")
+            }
 
             // HTTP-specific errors
             ServerError::BadRequest => (StatusCode::BAD_REQUEST, "Bad request"),

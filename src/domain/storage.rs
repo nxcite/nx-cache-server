@@ -11,6 +11,10 @@ pub enum StorageError {
     AlreadyExists,
     #[error("Storage operation failed")]
     OperationFailed,
+    /// The upload stream broke before its end: the client went away, nothing
+    /// on our side failed.
+    #[error("Client aborted the upload")]
+    ClientAbort,
 }
 
 #[async_trait]
