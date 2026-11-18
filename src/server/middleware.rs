@@ -1,7 +1,11 @@
 use crate::domain::storage::StorageProvider;
-use crate::server::{error::ServerError, AppState};
+use crate::server::{
+    error::ServerError,
+    logging::{Access, RequestRecord},
+    validation, AppState,
+};
 use axum::{
-    extract::{Request, State},
+    extract::{rejection::PathRejection, Extension, Path, Request, State},
     http::Method,
     middleware::Next,
     response::Response,
@@ -10,12 +14,21 @@ use subtle::ConstantTimeEq;
 
 pub async fn auth_middleware<T>(
     State(state): State<AppState<T>>,
+    // `Result`, so a bad path without a token still gets 401.
+    path: Result<Path<String>, PathRejection>,
+    Extension(record): Extension<RequestRecord>,
     request: Request,
     next: Next,
 ) -> Result<Response, ServerError>
 where
     T: StorageProvider,
 {
+    if let Ok(Path(hash)) = &path {
+        if validation::validate_hash(hash).is_ok() {
+            record.set_hash(hash);
+        }
+    }
+
     // Extract Bearer token from Authorization header
     let token = request
         .headers()
@@ -47,6 +60,12 @@ where
         // No drain: we don't read uploads from callers we can't identify.
         return Err(ServerError::Unauthorized);
     }
+
+    record.set_access(if is_read_write {
+        Access::ReadWrite
+    } else {
+        Access::ReadOnly
+    });
 
     // The read-only token may only read; writes require the service access
     // token. This lets untrusted CI jobs (e.g. PR builds) use the cache

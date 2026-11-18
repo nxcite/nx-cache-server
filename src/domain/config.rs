@@ -137,8 +137,30 @@ pub struct ServerConfig {
     )]
     pub read_only_access_token: Option<String>,
 
-    #[arg(long, env = "DEBUG", help = "Enable debug logging")]
+    #[arg(
+        long,
+        env = "DEBUG",
+        help = "Enable debug logging",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
     pub debug: bool,
+
+    #[arg(
+        long,
+        env = "LOG_FORMAT",
+        value_enum,
+        ignore_case = true,
+        default_value_t,
+        help = "Log output format"
+    )]
+    pub log_format: LogFormat,
+}
+
+#[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
+pub enum LogFormat {
+    #[default]
+    Text,
+    Json,
 }
 
 impl ConfigValidator for ServerConfig {

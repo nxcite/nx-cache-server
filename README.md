@@ -67,6 +67,8 @@ export S3_TIMEOUT="30"                          # S3 operation timeout in second
 export PORT="3000"                              # Server port (default: 3000)
 export BIND_ADDRESS="0.0.0.0"                   # IP to bind to (default: 0.0.0.0). Use "::" for IPv6/dual-stack
 export READ_ONLY_ACCESS_TOKEN="your-ro-token"   # Read-only token for untrusted CI jobs (see "Protecting against cache poisoning")
+export LOG_FORMAT="text"                        # Log format: text or json (default: text). See "Logging"
+export DEBUG="false"                            # Debug logs for this server (default: false). See "Logging"
 ```
 
 ##### Option B: Command Line Arguments
@@ -142,6 +144,60 @@ export READ_ONLY_ACCESS_TOKEN="your-ro-token"   # untrusted builds (PRs): read-o
 
 Then set `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` to the read-only token in PR pipelines and to the read-write token only in trusted-branch pipelines. A read-only token can retrieve artifacts as usual but gets `403 Forbidden` on writes, so untrusted jobs still benefit from cache hits without being able to poison the cache.
 
+### Logging
+
+The server logs to stdout, one line per request (health checks and other noise at `debug`).
+
+```bash
+export LOG_FORMAT="json"   # text (default) or json
+export RUST_LOG="info"     # e.g. "warn" or "info,nx_cache_server=debug"
+export DEBUG="true"        # debug logs for this server; ignored when RUST_LOG is set
+```
+
+- `RUST_LOG` is a comma-separated list of `level` or `target=level` entries. Full `env_filter` syntax (span filters, regexes) is not supported. Unset or empty means `info`, or the `DEBUG` filter when `DEBUG` is set. An invalid value stops the server at startup.
+- A level below `info` for this server (e.g. `RUST_LOG=warn`) also hides the `Server running on` line. An unknown word is read as a target name, so a typo like `RUST_LOG=warning` silences all output.
+- `DEBUG=true` (also `1`, `yes`, `on`) logs this server at `debug` and everything else at `info`. If `RUST_LOG` is also set, `RUST_LOG` wins and the server logs a warning.
+- Tokens, the `Authorization` header and request bodies are never logged.
+- Startup failures print to stderr. With `LOG_FORMAT=json` they are also logged as an `error` line.
+
+Each request logs a line with the message `request` and these fields:
+
+| Field | Meaning |
+|---|---|
+| `method` | HTTP method |
+| `hash` | Cache hash; omitted when missing or invalid |
+| `status` | Response status |
+| `outcome` | What happened (see below) |
+| `access` | `read_write`, `read_only`, or `none` (no valid token) |
+| `bytes` | Size of the artifact stored or retrieved; `0` otherwise |
+| `duration_ms` | Time until the response headers are sent. A download streams afterwards, so for GET this is roughly S3's time to first byte; for PUT it includes the full upload |
+
+| `outcome` | Meaning |
+|---|---|
+| `hit` | Artifact found (200) |
+| `miss` | Artifact not found (404) |
+| `stored` | Artifact uploaded (200) |
+| `exists` | Upload refused, hash already stored (409) |
+| `forbidden` | Read-only token tried to upload (403) |
+| `unauthorized` | Missing or unknown token (401) |
+| `invalid` | Bad hash or other rejected request (4xx) |
+| `unmatched` | No route for the path or method (404, 405) |
+| `error` | Storage failure (5xx) |
+| `health` | `GET /health` |
+| `aborted` | Client disconnected before the response (no `status`), or the upload broke off (400) |
+
+Each request line's level depends on its outcome: `error` for storage failures, `warn` for `unauthorized` and `invalid`, `info` for `hit`, `miss`, `stored` and `aborted`, and `debug` for `exists`, `forbidden`, `health` and `unmatched`. Set `DEBUG=true` to log every request. A storage failure also logs an S3 `warn` line with `operation`, `error` and `code`, tagged with the request's hash.
+
+Text format:
+```
+2026-10-21T01:47:50.548812Z  INFO nx_cache_server::server::logging: request method=GET hash="14cdc9c4a8af4987cce2" status=200 outcome="hit" access="read_only" bytes=1048576 duration_ms=5
+```
+
+JSON format:
+```json
+{"timestamp":"2026-10-21T01:47:51.163412Z","level":"INFO","message":"request","method":"GET","hash":"932ad3fd6176a673686b","status":200,"outcome":"hit","access":"read_only","bytes":1048576,"duration_ms":2,"target":"nx_cache_server::server::logging"}
+```
+
 ---
 
 ### Stay Updated. Watch this repository to get notified about new releases!
@@ -149,5 +205,3 @@ Then set `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` to the read-only token in PR
 <img width="369" height="387" alt="image" src="https://github.com/user-attachments/assets/97c4ebab-75a1-4f83-bc52-cf4ebbc73bfa" />
 
 <img width="465" height="366" alt="image" src="https://github.com/user-attachments/assets/512af549-0e9a-40ac-95bd-f9eea0da38a7" />
-
-
