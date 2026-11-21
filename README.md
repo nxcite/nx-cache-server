@@ -109,6 +109,83 @@ curl http://localhost:3000/health
 ```
 You should receive an "OK" response.
 
+### Docker
+
+Multi-arch (`linux/amd64`, `linux/arm64`) images are published to GHCR on every
+release and every push to `master`. `latest` always points at the newest
+release:
+
+```bash
+docker run -p 3000:3000 \
+  -e S3_BUCKET_NAME="your-s3-bucket-name" \
+  -e SERVICE_ACCESS_TOKEN="your-bearer-token" \
+  -e AWS_REGION="us-west-2" \
+  -e AWS_ACCESS_KEY_ID="your-aws-access-key-id" \
+  -e AWS_SECRET_ACCESS_KEY="your-aws-secret-access-key" \
+  ghcr.io/nxcite/nx-cache-server:latest
+```
+
+Tags: `latest` and `X.Y.Z` (releases), `master` (tip of the default branch),
+`sha-<short-sha>` (any build).
+The image is distroless — no shell, no package manager, runs as uid 65532 — and
+takes the same environment variables and CLI arguments as the binary. The
+container gets no AWS config files or instance metadata, so credentials have to
+be passed in unless it runs somewhere the SDK can discover them (ECS/EKS task
+roles, or `-v ~/.aws:/home/nonroot/.aws:ro` locally).
+
+### Kubernetes
+
+The server is stateless and holds no local cache, so a plain Deployment and
+Service are all it needs:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nx-cache-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: nx-cache-server }
+  template:
+    metadata:
+      labels: { app: nx-cache-server }
+    spec:
+      containers:
+        - name: server
+          image: ghcr.io/nxcite/nx-cache-server:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: S3_BUCKET_NAME
+              value: your-s3-bucket-name
+            - name: AWS_REGION
+              value: us-west-2
+            - name: SERVICE_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef: { name: nx-cache-server, key: service-access-token }
+          livenessProbe:
+            httpGet: { path: /health, port: 3000 }
+          readinessProbe:
+            httpGet: { path: /health, port: 3000 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nx-cache-server
+spec:
+  selector: { app: nx-cache-server }
+  ports:
+    - port: 80
+      targetPort: 3000
+```
+
+Create the token secret with
+`kubectl create secret generic nx-cache-server --from-literal=service-access-token=...`.
+The manifest above passes no AWS credentials: on EKS, attach an IAM role to the
+ServiceAccount (IRSA or Pod Identity) and the SDK discovers it. Elsewhere, add
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` from the same Secret.
+
 ### Client Configuration
 
 To configure your Nx workspace to use this cache server, set the following environment variables:
